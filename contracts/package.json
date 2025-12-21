@@ -1,0 +1,11 @@
+{
+  "name": "@ai-trading-agent/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "compile": "movement move compile",
+    "test": "movement move test",
+    "clean": "rm -rf .move"
+  }
+}
+

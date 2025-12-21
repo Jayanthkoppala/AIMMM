@@ -1,0 +1,23 @@
+{
+  "name": "ai-trading-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI Trading Agent Hackathon App on Movement Network",
+  "scripts": {
+    "dev": "pnpm --parallel --filter './frontend' --filter './backend' dev",
+    "dev:frontend": "pnpm --filter frontend dev",
+    "dev:backend": "pnpm --filter backend dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "clean": "pnpm -r clean && rm -rf node_modules",
+    "lint": "pnpm -r lint"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}
+

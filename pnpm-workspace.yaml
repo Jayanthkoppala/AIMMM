@@ -1,0 +1,12 @@
+packages:
+  - contracts
+  - backend
+  - frontend
+
+ignoredBuiltDependencies:
+  - '@reown/appkit'
+  - bufferutil
+  - keccak
+  - sharp
+  - unrs-resolver
+  - utf-8-validate

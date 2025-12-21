@@ -1,0 +1,25 @@
+[package]
+name = "AgentExecutor"
+version = "1.0.0"
+authors = [""]
+
+[addresses]
+agent_executor = "_"
+uniswap_v2 = "0xb99c12e7b751a6ed18539bf8ae50e0a3482c6fb58099e85a2f6cfda095184cc4"
+
+[dev-addresses]
+agent_executor = "0xbeef"
+uniswap_v2 = "0xbeef"
+
+[dependencies.AptosFramework]
+git = "https://github.com/movementlabsxyz/aptos-core.git"
+rev = "movement"
+subdir = "aptos-move/framework/aptos-framework"
+
+[dependencies.UniswapV2]
+git = "https://github.com/movementlabsxyz/movement-defi-examples.git"
+rev = "main"
+subdir = "univ2"
+
+[dev-dependencies]
+
