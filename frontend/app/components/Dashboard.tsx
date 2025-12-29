@@ -28,10 +28,10 @@ const tabs = [
 ];
 
 const quickStats = [
-  { label: "Today's Trades", value: "12", change: "+3", icon: Activity, color: "cyber-indigo" },
-  { label: "Win Rate", value: "83%", change: "+5%", icon: TrendingUp, color: "cyber-green" },
-  { label: "Total P&L", value: "+$243", change: "", icon: DollarSign, color: "cyber-green" },
-  { label: "Active Since", value: "2h 34m", change: "", icon: Clock, color: "cyber-purple" },
+  { label: "Today's Trades", value: "12", change: "+3", icon: Activity, iconClass: "text-cyber-indigo" },
+  { label: "Win Rate", value: "83%", change: "+5%", icon: TrendingUp, iconClass: "text-cyber-green" },
+  { label: "Total P&L", value: "+$243", change: "", icon: DollarSign, iconClass: "text-cyber-green" },
+  { label: "Active Since", value: "2h 34m", change: "", icon: Clock, iconClass: "text-cyber-purple" },
 ];
 
 export function Dashboard() {
@@ -66,7 +66,7 @@ export function Dashboard() {
                 <div key={stat.label} className="stat-card">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm text-gray-400">{stat.label}</span>
-                    <stat.icon className={`h-4 w-4 text-${stat.color}`} />
+                    <stat.icon className={`h-4 w-4 ${stat.iconClass}`} />
                   </div>
                   <div className="flex items-end gap-2">
                     <span className="text-2xl font-bold text-white">{stat.value}</span>

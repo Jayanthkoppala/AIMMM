@@ -19,37 +19,43 @@ const features = [
     icon: Brain,
     title: "AI Agent",
     description: "LLM-powered decision making with advanced market analysis",
-    color: "cyber-indigo",
+    bgClass: "bg-cyber-indigo/20",
+    textClass: "text-cyber-indigo",
   },
   {
     icon: BarChart3,
     title: "OHLCV Data",
     description: "Real-time candlestick data with 1-minute granularity",
-    color: "cyber-blue",
+    bgClass: "bg-cyber-blue/20",
+    textClass: "text-cyber-blue",
   },
   {
     icon: MessageSquare,
     title: "Sentiment",
     description: "Social media sentiment analysis from multiple sources",
-    color: "cyber-purple",
+    bgClass: "bg-cyber-purple/20",
+    textClass: "text-cyber-purple",
   },
   {
     icon: LineChart,
     title: "70+ Indicators",
     description: "Technical indicators including RSI, MACD, Bollinger Bands",
-    color: "cyber-green",
+    bgClass: "bg-cyber-green/20",
+    textClass: "text-cyber-green",
   },
   {
     icon: Zap,
     title: "Auto Execution",
     description: "24/7 autonomous trading with Privy embedded wallets",
-    color: "cyber-amber",
+    bgClass: "bg-cyber-amber/20",
+    textClass: "text-cyber-amber",
   },
   {
     icon: CreditCard,
     title: "x402 Payments",
     description: "Integrated payment protocol for seamless transactions",
-    color: "cyber-red",
+    bgClass: "bg-cyber-red/20",
+    textClass: "text-cyber-red",
   },
 ];
 
@@ -128,8 +134,8 @@ export function LandingPage() {
                 key={feature.title}
                 className="feature-card group"
               >
-                <div className={`w-12 h-12 rounded-xl bg-${feature.color}/20 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
-                  <feature.icon className={`h-6 w-6 text-${feature.color}`} />
+                <div className={`w-12 h-12 rounded-xl ${feature.bgClass} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
+                  <feature.icon className={`h-6 w-6 ${feature.textClass}`} />
                 </div>
                 <h3 className="text-xl font-semibold text-white mb-2">
                   {feature.title}
