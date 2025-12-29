@@ -4,17 +4,14 @@ import { useState } from "react";
 import { useAgent } from "@/app/hooks/use-agent";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { usePrivyWallet } from "@/app/hooks/use-privy-wallet";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "./ui/card";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Badge } from "./ui/badge";
-import { Separator } from "./ui/separator";
-import { Select } from "./ui/select";
 import { 
   Play, 
   TrendingUp, 
   TrendingDown, 
+  Minus,
   DollarSign, 
   Brain, 
   CheckCircle2, 
@@ -22,7 +19,8 @@ import {
   Loader2,
   BarChart3,
   Zap,
-  Sparkles
+  Sparkles,
+  ArrowRight
 } from "lucide-react";
 
 const DEFAULT_TOKEN_A = process.env.NEXT_PUBLIC_TOKEN_A_ADDRESS || "0x...";
@@ -61,7 +59,7 @@ export function AgentDashboard() {
           token_b: tokenB,
         },
         pool_address: poolAddress || undefined,
-        privy_access_token: accessToken,
+        privy_access_token: accessToken ?? undefined,
       });
     } catch (error) {
       console.error("Agent execution failed:", error);
@@ -70,60 +68,64 @@ export function AgentDashboard() {
 
   return (
     <div className="space-y-6">
-      <Card className="shadow-lg border-2">
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Brain className="h-5 w-5 text-primary" />
-            <CardTitle className="text-2xl">AI Trading Agent</CardTitle>
+      <div className="glass-card rounded-2xl p-6">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyber-indigo to-cyber-purple flex items-center justify-center">
+            <Brain className="h-5 w-5 text-white" />
           </div>
-          <CardDescription className="text-base">
-            Configure your trading agent and execute trades on Mosaic DEX
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Mode Selection */}
+          <div>
+            <h2 className="text-xl font-bold text-white">AI Agent Control</h2>
+            <p className="text-sm text-gray-400">Configure and execute trading strategies</p>
+          </div>
+        </div>
+
+        <div className="space-y-6">
           <div className="space-y-3">
-            <Label className="text-base font-semibold">Execution Mode</Label>
-            <div className="flex gap-3">
-              <Button
-                variant={mode === "analysis" ? "default" : "outline"}
+            <Label className="text-sm font-medium text-gray-300">Execution Mode</Label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
                 onClick={() => setMode("analysis")}
-                className="flex-1 h-11 gap-2"
-                size="lg"
+                className={`flex flex-col items-center gap-2 p-4 rounded-xl transition-all ${
+                  mode === "analysis"
+                    ? "bg-cyber-indigo/20 border-2 border-cyber-indigo text-white"
+                    : "bg-cyber-bg/50 border border-cyber-card hover:border-cyber-indigo/50 text-gray-400"
+                }`}
               >
-                <BarChart3 className="h-4 w-4" />
-                Analysis Only
-              </Button>
-              <Button
-                variant={mode === "trade" ? "default" : "outline"}
+                <BarChart3 className="h-5 w-5" />
+                <span className="text-sm font-medium">Analysis</span>
+              </button>
+              <button
                 onClick={() => setMode("trade")}
-                className="flex-1 h-11 gap-2"
-                size="lg"
+                className={`flex flex-col items-center gap-2 p-4 rounded-xl transition-all ${
+                  mode === "trade"
+                    ? "bg-cyber-indigo/20 border-2 border-cyber-indigo text-white"
+                    : "bg-cyber-bg/50 border border-cyber-card hover:border-cyber-indigo/50 text-gray-400"
+                }`}
               >
-                <Zap className="h-4 w-4" />
-                Execute Trade
-              </Button>
-              <Button
-                variant={mode === "autonomous" ? "default" : "outline"}
+                <Zap className="h-5 w-5" />
+                <span className="text-sm font-medium">Trade</span>
+              </button>
+              <button
                 onClick={() => setMode("autonomous")}
-                className="flex-1 h-11 gap-2 bg-purple-600 hover:bg-purple-700"
-                size="lg"
+                className={`flex flex-col items-center gap-2 p-4 rounded-xl transition-all ${
+                  mode === "autonomous"
+                    ? "bg-cyber-purple/20 border-2 border-cyber-purple text-white"
+                    : "bg-cyber-bg/50 border border-cyber-card hover:border-cyber-purple/50 text-gray-400"
+                }`}
               >
-                <Sparkles className="h-4 w-4" />
-                Autonomous
-              </Button>
+                <Sparkles className="h-5 w-5" />
+                <span className="text-sm font-medium">Auto</span>
+              </button>
             </div>
+            
             {mode === "autonomous" && (
-              <div className="p-4 rounded-lg bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800">
-                <div className="flex items-start gap-2">
-                  <Sparkles className="h-5 w-5 text-purple-600 mt-0.5" />
+              <div className="p-4 rounded-xl bg-cyber-purple/10 border border-cyber-purple/30">
+                <div className="flex items-start gap-3">
+                  <Sparkles className="h-5 w-5 text-cyber-purple mt-0.5" />
                   <div>
-                    <p className="font-semibold text-purple-900 dark:text-purple-100">
-                      Autonomous Trading Enabled
-                    </p>
-                    <p className="text-sm text-purple-700 dark:text-purple-300 mt-1">
-                      Your AI agent will execute trades automatically based on market conditions.
-                      No manual approval needed - powered by Privy embedded wallets.
+                    <p className="font-medium text-cyber-purple">Autonomous Trading</p>
+                    <p className="text-sm text-gray-400 mt-1">
+                      AI executes trades automatically. Powered by Privy embedded wallets.
                     </p>
                   </div>
                 </div>
@@ -131,162 +133,157 @@ export function AgentDashboard() {
             )}
           </div>
 
-          <Separator />
+          <div className="h-px bg-gradient-to-r from-transparent via-cyber-indigo/30 to-transparent" />
 
-          {/* Token Pair */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="tokenA" className="text-base font-semibold">Token A Address</Label>
-              <Input
-                id="tokenA"
-                type="text"
-                value={tokenA}
-                onChange={(e) => setTokenA(e.target.value)}
-                placeholder="0x..."
-                className="font-mono"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="tokenB" className="text-base font-semibold">Token B Address</Label>
-              <Input
-                id="tokenB"
-                type="text"
-                value={tokenB}
-                onChange={(e) => setTokenB(e.target.value)}
-                placeholder="0x..."
-                className="font-mono"
-              />
+          <div className="space-y-4">
+            <Label className="text-sm font-medium text-gray-300">Token Pair</Label>
+            <div className="flex items-center gap-3">
+              <div className="flex-1">
+                <Input
+                  value={tokenA}
+                  onChange={(e) => setTokenA(e.target.value)}
+                  placeholder="Token A Address"
+                  className="font-mono text-sm bg-cyber-bg border-cyber-card focus:border-cyber-indigo text-white placeholder:text-gray-600"
+                />
+              </div>
+              <ArrowRight className="h-5 w-5 text-cyber-indigo flex-shrink-0" />
+              <div className="flex-1">
+                <Input
+                  value={tokenB}
+                  onChange={(e) => setTokenB(e.target.value)}
+                  placeholder="Token B Address"
+                  className="font-mono text-sm bg-cyber-bg border-cyber-card focus:border-cyber-indigo text-white placeholder:text-gray-600"
+                />
+              </div>
             </div>
           </div>
 
-          {/* Pool Address */}
           <div className="space-y-2">
-            <Label htmlFor="poolAddress" className="text-base font-semibold">Pool Address</Label>
+            <Label className="text-sm font-medium text-gray-300">Pool Address</Label>
             <Input
-              id="poolAddress"
-              type="text"
               value={poolAddress}
               onChange={(e) => setPoolAddress(e.target.value)}
-              placeholder="0xbcbf55e1004687d412f05856ef7c17dcaacc1be632ba2d67b71073d25b425c3b"
-              className="font-mono"
+              placeholder="Enter pool address"
+              className="font-mono text-sm bg-cyber-bg border-cyber-card focus:border-cyber-indigo text-white placeholder:text-gray-600"
             />
-            <p className="text-xs text-muted-foreground">
-              Enter the pool address for this token pair (data is collected automatically by the scheduler)
-            </p>
           </div>
 
-          <Separator />
+          <div className="h-px bg-gradient-to-r from-transparent via-cyber-indigo/30 to-transparent" />
 
-          {/* Run Button */}
           <Button
             onClick={handleRunAgent}
             disabled={isLoading || (mode !== "autonomous" && !connected) || (mode === "autonomous" && !authenticated)}
-            className="w-full h-12 text-base gap-2"
-            size="lg"
+            className={`w-full h-14 text-lg font-semibold border-0 ${
+              isLoading 
+                ? "bg-cyber-card text-gray-400" 
+                : "cyber-button text-white animate-pulse-glow"
+            }`}
           >
             {isLoading ? (
               <>
-                <Loader2 className="h-5 w-5 animate-spin" />
-                Processing...
+                <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                Analyzing...
               </>
             ) : (
               <>
-                <Play className="h-5 w-5" />
+                <Play className="h-5 w-5 mr-2" />
                 Run Agent
               </>
             )}
           </Button>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
-      {/* Results */}
       {result && (
-        <Card className="shadow-lg border-2">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-green-500" />
-              <CardTitle className="text-2xl">Execution Results</CardTitle>
+        <div className="glass-card rounded-2xl p-6 animate-in slide-in-from-bottom-4 duration-500">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 rounded-xl bg-cyber-green/20 flex items-center justify-center">
+              <CheckCircle2 className="h-5 w-5 text-cyber-green" />
             </div>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Oracle Prices */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <DollarSign className="h-5 w-5 text-muted-foreground" />
-                <h3 className="font-semibold text-lg">Oracle Prices</h3>
+            <div>
+              <h2 className="text-xl font-bold text-white">Execution Results</h2>
+              <p className="text-sm text-gray-400">Analysis complete</p>
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <DollarSign className="h-4 w-4 text-gray-400" />
+                <span className="text-sm font-medium text-gray-300">Oracle Prices</span>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 rounded-lg bg-muted/50 border">
-                  <div className="text-sm text-muted-foreground mb-1">Token A</div>
-                  <div className="text-2xl font-bold font-mono">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-4 rounded-xl bg-cyber-bg/50 border border-cyber-card">
+                  <span className="text-xs text-gray-500 block mb-1">Token A</span>
+                  <span className="text-xl font-bold font-mono text-white">
                     ${result.oracle_price.token_a.toFixed(4)}
-                  </div>
+                  </span>
                 </div>
-                <div className="p-4 rounded-lg bg-muted/50 border">
-                  <div className="text-sm text-muted-foreground mb-1">Token B</div>
-                  <div className="text-2xl font-bold font-mono">
+                <div className="p-4 rounded-xl bg-cyber-bg/50 border border-cyber-card">
+                  <span className="text-xs text-gray-500 block mb-1">Token B</span>
+                  <span className="text-xl font-bold font-mono text-white">
                     ${result.oracle_price.token_b.toFixed(4)}
-                  </div>
+                  </span>
                 </div>
               </div>
             </div>
 
-            <Separator />
+            <div className="h-px bg-gradient-to-r from-transparent via-cyber-indigo/30 to-transparent" />
 
-            {/* LLM Decision */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Brain className="h-5 w-5 text-primary" />
-                <h3 className="font-semibold text-lg">AI Decision</h3>
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Brain className="h-4 w-4 text-cyber-indigo" />
+                <span className="text-sm font-medium text-gray-300">AI Decision</span>
               </div>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50 border">
-                  <span className="text-muted-foreground font-medium">Action</span>
-                  <Badge 
-                    variant={
-                      result.llm_decision.action === "BUY" ? "success" :
-                      result.llm_decision.action === "SELL" ? "destructive" :
-                      "secondary"
-                    }
-                    className="text-base px-3 py-1"
-                  >
-                    {result.llm_decision.action === "BUY" && <TrendingUp className="h-4 w-4 mr-1" />}
-                    {result.llm_decision.action === "SELL" && <TrendingDown className="h-4 w-4 mr-1" />}
+              
+              <div className="p-4 rounded-xl bg-cyber-bg/50 border border-cyber-card mb-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-400">Recommended Action</span>
+                  <div className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold ${
+                    result.llm_decision.action === "BUY" 
+                      ? "action-badge-buy" 
+                      : result.llm_decision.action === "SELL"
+                      ? "action-badge-sell"
+                      : "action-badge-hold"
+                  }`}>
+                    {result.llm_decision.action === "BUY" && <TrendingUp className="h-4 w-4" />}
+                    {result.llm_decision.action === "SELL" && <TrendingDown className="h-4 w-4" />}
+                    {result.llm_decision.action === "HOLD" && <Minus className="h-4 w-4" />}
                     {result.llm_decision.action}
-                  </Badge>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground font-medium">Confidence</span>
-                    <span className="font-semibold">
-                      {(result.llm_decision.confidence * 100).toFixed(1)}%
-                    </span>
-                  </div>
-                  <div className="w-full bg-muted rounded-full h-3 overflow-hidden">
-                    <div
-                      className="bg-primary h-full rounded-full transition-all duration-500"
-                      style={{ width: `${result.llm_decision.confidence * 100}%` }}
-                    />
-                  </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-400">Confidence Level</span>
+                  <span className="font-semibold text-white">
+                    {(result.llm_decision.confidence * 100).toFixed(1)}%
+                  </span>
+                </div>
+                <div className="confidence-bar">
+                  <div
+                    className="confidence-fill"
+                    style={{ width: `${result.llm_decision.confidence * 100}%` }}
+                  />
                 </div>
               </div>
             </div>
 
-            {/* Execution Status */}
             {result.executed && result.tx_hash && (
               <>
-                <Separator />
-                <div className="space-y-3">
-                  <h3 className="font-semibold text-lg">Trade Executed</h3>
-                  <div className="flex items-center gap-2 p-4 rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800">
-                    <CheckCircle2 className="h-5 w-5 text-green-600" />
+                <div className="h-px bg-gradient-to-r from-transparent via-cyber-green/30 to-transparent" />
+                
+                <div className="p-4 rounded-xl bg-cyber-green/10 border border-cyber-green/30">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle2 className="h-5 w-5 text-cyber-green" />
                     <div className="flex-1">
-                      <div className="text-sm text-muted-foreground mb-1">Transaction Hash</div>
+                      <span className="text-sm text-gray-400 block mb-1">Trade Executed</span>
                       <a
-                        href={`https://explorer.movementnetwork.xyz/txn/${result.tx_hash}?network=testnet`}
+                        href={`https://explorer.movementnetwork.xyz/txn/${result.tx_hash}?network=mainnet`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-primary hover:underline font-mono text-sm flex items-center gap-1"
+                        className="text-cyber-indigo hover:text-cyber-purple font-mono text-sm flex items-center gap-1 transition-colors"
                       >
                         {result.tx_hash.slice(0, 16)}...{result.tx_hash.slice(-8)}
                         <ExternalLink className="h-3 w-3" />
@@ -296,10 +293,9 @@ export function AgentDashboard() {
                 </div>
               </>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
     </div>
   );
 }
-
