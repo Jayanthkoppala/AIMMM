@@ -40,7 +40,12 @@ export function WalletProvider({ children }: WalletProviderProps) {
         loginMethods: ["email", "google", "twitter", "github"],
         appearance: {
           theme: "dark",
-          accentColor: "#6366F1",
+          accentColor: "#1FAA68",
+        },
+        embeddedWallets: {
+          ethereum: {
+            createOnLogin: "users-without-wallets",
+          },
         },
       }}
     >
