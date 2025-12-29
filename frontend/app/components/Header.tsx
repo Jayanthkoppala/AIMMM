@@ -3,7 +3,7 @@
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { usePrivyWallet } from "@/app/hooks/use-privy-wallet";
 import { Button } from "./ui/button";
-import { LogOut, Copy, Check, ExternalLink, User, Zap, Wallet } from "lucide-react";
+import { LogOut, Copy, Check, ExternalLink, User, Terminal } from "lucide-react";
 import { useState, useEffect } from "react";
 import {
   DropdownMenu,
@@ -15,7 +15,7 @@ import {
 
 export function Header() {
   const { account, connected, disconnect, wallet } = useWallet();
-  const { authenticated, user, login, logout, privyUserId } = usePrivyWallet();
+  const { authenticated, user, login, logout } = usePrivyWallet();
   const [copied, setCopied] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
@@ -77,25 +77,27 @@ export function Header() {
     <header 
       className={`sticky top-0 z-50 w-full transition-all duration-200 ${
         scrolled 
-          ? "bg-[#060608]/95 backdrop-blur-sm border-b border-[#1F1F24]" 
+          ? "bg-[#0a0a0a]/95 backdrop-blur-sm border-b border-[#1a1a1a]" 
           : "bg-transparent"
       }`}
     >
-      <div className="container flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
+      <div className="container flex h-14 items-center justify-between px-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-8">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-emerald flex items-center justify-center">
-              <Zap className="h-4 w-4 text-white" />
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 border border-[#00ff00] flex items-center justify-center glow-border">
+              <Terminal className="h-4 w-4 text-[#00ff00]" />
             </div>
-            <h1 className="text-lg font-semibold text-white tracking-tight">AI Trading Agent</h1>
+            <h1 className="text-sm font-bold text-[#00ff00] tracking-wider font-mono">
+              AI_AGENT
+            </h1>
           </div>
           
-          <nav className="hidden md:flex items-center gap-6">
-            <a href="#features" className="text-sm text-gray-400 hover:text-white transition-colors">
-              Features
+          <nav className="hidden md:flex items-center gap-6 font-mono">
+            <a href="#features" className="text-xs text-[#006600] hover:text-[#00ff00] transition-colors uppercase tracking-wider">
+              [Modules]
             </a>
-            <a href="#" className="text-sm text-gray-400 hover:text-white transition-colors">
-              Docs
+            <a href="#" className="text-xs text-[#006600] hover:text-[#00ff00] transition-colors uppercase tracking-wider">
+              [Docs]
             </a>
           </nav>
         </div>
@@ -106,108 +108,107 @@ export function Header() {
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="outline"
-                  className="gap-2 h-9 px-3 bg-transparent border-[#2A2D33] hover:border-emerald hover:bg-transparent"
+                  className="gap-2 h-8 px-3 bg-transparent border-[#00ff00] hover:bg-[#00ff00] hover:text-[#0a0a0a] text-[#00ff00] font-mono text-xs"
                 >
-                  <User className="h-4 w-4 text-emerald" />
-                  <span className="hidden sm:inline text-white text-sm">
-                    {user?.email?.address?.split("@")[0] || user?.twitter?.username || "User"}
+                  <User className="h-3 w-3" />
+                  <span className="hidden sm:inline uppercase">
+                    {user?.email?.address?.split("@")[0] || user?.twitter?.username || "user"}
                   </span>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-64 bg-[#111317] border-[#2A2D33]">
+              <DropdownMenuContent align="end" className="w-64 bg-[#0f0f0f] border-[#00ff00] font-mono">
                 <div className="px-3 py-2">
-                  <p className="text-xs text-gray-500 mb-1">Account</p>
-                  <p className="text-sm font-medium text-white">
-                    {user?.email?.address || user?.twitter?.username || user?.google?.email || "Authenticated"}
+                  <p className="text-[10px] text-[#006600] mb-1 uppercase">// Session</p>
+                  <p className="text-xs text-[#00ff00]">
+                    {user?.email?.address || user?.twitter?.username || user?.google?.email || "authenticated"}
                   </p>
                 </div>
-                <DropdownMenuSeparator className="bg-[#2A2D33]" />
+                <DropdownMenuSeparator className="bg-[#1a1a1a]" />
                 <DropdownMenuItem
                   onClick={logout}
-                  className="gap-2 text-red-400 focus:text-red-400 focus:bg-red-500/10"
+                  className="gap-2 text-[#ff3333] focus:text-[#ff3333] focus:bg-[#ff3333]/10 font-mono text-xs"
                 >
-                  <LogOut className="h-4 w-4" />
-                  Sign Out
+                  <LogOut className="h-3 w-3" />
+                  ./logout
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
             <Button
-              variant="outline"
               size="sm"
-              className="gap-2 bg-transparent border-[#2A2D33] hover:border-emerald text-white"
+              className="gap-2 btn-terminal text-xs h-8"
               onClick={login}
             >
-              <User className="h-4 w-4" />
-              <span className="hidden sm:inline">Sign In</span>
+              <User className="h-3 w-3" />
+              <span className="hidden sm:inline">./login</span>
             </Button>
           )}
 
           {connected && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button className="gap-2 h-9 px-4 bg-emerald hover:bg-emerald-dark text-white border-0">
+                <Button className="gap-2 h-8 px-4 btn-terminal-filled text-xs">
                   <div className="flex items-center gap-2">
                     {wallet?.icon && (
                       <img
                         src={wallet.icon}
                         alt={wallet?.name || "Wallet"}
-                        className="w-4 h-4 rounded"
+                        className="w-3 h-3"
                       />
                     )}
-                    <span className="hidden sm:inline font-mono text-sm">
+                    <span className="hidden sm:inline font-mono">
                       {formatAddress(addressString)}
                     </span>
                   </div>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-64 bg-[#111317] border-[#2A2D33]">
+              <DropdownMenuContent align="end" className="w-72 bg-[#0f0f0f] border-[#00ff00] font-mono">
                 <div className="px-3 py-2">
-                  <p className="text-xs text-gray-500 mb-1">Connected Wallet</p>
+                  <p className="text-[10px] text-[#006600] mb-1 uppercase">// Wallet Connected</p>
                   <div className="flex items-center gap-2">
                     {wallet?.icon && (
                       <img
                         src={wallet.icon}
                         alt={wallet?.name || "Wallet"}
-                        className="w-5 h-5 rounded"
+                        className="w-4 h-4"
                       />
                     )}
-                    <p className="text-sm font-medium text-white">{wallet?.name || "Wallet"}</p>
+                    <p className="text-xs text-[#00ff00]">{wallet?.name || "wallet"}</p>
                   </div>
                 </div>
-                <DropdownMenuSeparator className="bg-[#2A2D33]" />
+                <DropdownMenuSeparator className="bg-[#1a1a1a]" />
                 <div className="px-3 py-2">
-                  <p className="text-xs text-gray-500 mb-1">Address</p>
+                  <p className="text-[10px] text-[#006600] mb-1 uppercase">// Address</p>
                   <div className="flex items-center gap-2">
-                    <p className="text-sm font-mono flex-1 truncate text-gray-300">
+                    <p className="text-xs font-mono flex-1 truncate text-[#00aa00]">
                       {addressString}
                     </p>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-6 w-6 hover:bg-emerald/10"
+                      className="h-6 w-6 hover:bg-[#00ff00]/10"
                       onClick={copyAddress}
                     >
                       {copied ? (
-                        <Check className="h-3 w-3 text-emerald" />
+                        <Check className="h-3 w-3 text-[#00ff00]" />
                       ) : (
-                        <Copy className="h-3 w-3 text-gray-400" />
+                        <Copy className="h-3 w-3 text-[#006600]" />
                       )}
                     </Button>
                   </div>
                 </div>
-                <DropdownMenuSeparator className="bg-[#2A2D33]" />
-                <DropdownMenuItem onClick={viewOnExplorer} className="gap-2 text-gray-300 focus:bg-emerald/10">
-                  <ExternalLink className="h-4 w-4" />
-                  View on Explorer
+                <DropdownMenuSeparator className="bg-[#1a1a1a]" />
+                <DropdownMenuItem onClick={viewOnExplorer} className="gap-2 text-[#00aa00] focus:bg-[#00ff00]/10 text-xs">
+                  <ExternalLink className="h-3 w-3" />
+                  ./view_explorer
                 </DropdownMenuItem>
-                <DropdownMenuSeparator className="bg-[#2A2D33]" />
+                <DropdownMenuSeparator className="bg-[#1a1a1a]" />
                 <DropdownMenuItem
                   onClick={handleDisconnect}
-                  className="gap-2 text-red-400 focus:text-red-400 focus:bg-red-500/10"
+                  className="gap-2 text-[#ff3333] focus:text-[#ff3333] focus:bg-[#ff3333]/10 text-xs"
                 >
-                  <LogOut className="h-4 w-4" />
-                  Disconnect
+                  <LogOut className="h-3 w-3" />
+                  ./disconnect
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

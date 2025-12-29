@@ -51,8 +51,13 @@ cd backend && uvicorn app.main:app --reload --host localhost --port 8000
 - Configured frontend to run on port 5000 for Replit compatibility
 - Made Privy provider optional to allow app to run without API key
 - Updated next.config.ts with proper turbopack configuration
-- Redesigned UI with clean, minimalist black/white/green theme per user request
-- Color palette: Base Black (#060608), Charcoal (#111317), Emerald (#1FAA68), White text
-- Created new components: LandingPage, Dashboard, ActivityFeed, MarketOverview
-- Clean header with simple navigation and emerald accent buttons
-- Professional fintech aesthetic with generous spacing and subtle borders
+- **Terminal/Developer UI Redesign** - Complete aesthetic overhaul:
+  - Color palette: Base Black (#0a0a0a), Terminal Green (#00ff00)
+  - Monospace fonts: JetBrains Mono, IBM Plex Mono
+  - Terminal window chrome with red/yellow/green dots
+  - Blinking cursor animation, scanline effect
+  - Command-line style buttons (./login, ./execute, cat README.md)
+  - Glow effects on text and borders
+  - Code execution simulation on landing page
+  - Log-style activity feed formatting
+- Fixed login redirect to check both Privy authentication and wallet connection

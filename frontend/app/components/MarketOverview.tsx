@@ -1,6 +1,6 @@
 "use client";
 
-import { TrendingUp, TrendingDown, BarChart3 } from "lucide-react";
+import { TrendingUp, TrendingDown, Database } from "lucide-react";
 
 const marketData = {
   pair: "WETH/USDC",
@@ -20,66 +20,66 @@ const balances = [
 
 export function MarketOverview() {
   return (
-    <div className="p-5 rounded-xl bg-[#111317] border border-[#1F1F24]">
+    <div className="p-5 bg-[#0f0f0f] border border-[#1a1a1a] font-mono">
       <div className="flex items-center gap-2 mb-4">
-        <BarChart3 className="h-5 w-5 text-gray-400" />
-        <h3 className="font-medium text-white">Market</h3>
+        <Database className="h-4 w-4 text-[#00ff00]" />
+        <h3 className="text-sm text-[#00ff00] uppercase">{"// Market Data"}</h3>
       </div>
 
-      <div className="p-4 rounded-lg bg-[#1A1D23] border border-[#2A2D33] mb-4">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-sm text-gray-400">{marketData.pair}</span>
-          <div className={`flex items-center gap-1 text-sm ${marketData.isPositive ? 'text-emerald' : 'text-red-400'}`}>
+      <div className="p-4 bg-[#0a0a0a] border border-[#1a1a1a] mb-4">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs text-[#006600]">{marketData.pair}</span>
+          <div className={`flex items-center gap-1 text-xs ${marketData.isPositive ? 'text-[#00ff00]' : 'text-[#ff3333]'}`}>
             {marketData.isPositive ? (
-              <TrendingUp className="h-4 w-4" />
+              <TrendingUp className="h-3 w-3" />
             ) : (
-              <TrendingDown className="h-4 w-4" />
+              <TrendingDown className="h-3 w-3" />
             )}
             {marketData.change}
           </div>
         </div>
-        <div className="text-2xl font-semibold text-white mb-3 font-mono">{marketData.price}</div>
+        <div className="text-2xl font-bold text-[#00ff00] mb-3 glow-text-subtle">{marketData.price}</div>
         
-        <div className="h-12 flex items-end gap-1">
+        <div className="h-10 flex items-end gap-0.5">
           {[35, 42, 38, 55, 48, 62, 58, 70, 65, 75, 72, 80].map((height, i) => (
             <div
               key={i}
-              className="flex-1 bg-emerald/30 rounded-sm"
+              className="flex-1 bg-[#00ff00]/30 border-t border-[#00ff00]"
               style={{ height: `${height}%` }}
             />
           ))}
         </div>
 
-        <div className="flex justify-between text-xs mt-3">
+        <div className="flex justify-between text-[10px] mt-3">
           <div>
-            <span className="block text-gray-500">24h Volume</span>
-            <span className="text-white font-mono">{marketData.volume}</span>
+            <span className="block text-[#004400]">vol_24h</span>
+            <span className="text-[#00aa00]">{marketData.volume}</span>
           </div>
           <div className="text-right">
-            <span className="block text-gray-500">24h Range</span>
-            <span className="text-white font-mono text-xs">{marketData.low24h} - {marketData.high24h}</span>
+            <span className="block text-[#004400]">range_24h</span>
+            <span className="text-[#00aa00]">{marketData.low24h} - {marketData.high24h}</span>
           </div>
         </div>
       </div>
 
       <div>
-        <h4 className="text-sm font-medium text-gray-400 mb-3">Balances</h4>
-        <div className="space-y-2">
+        <h4 className="text-xs text-[#006600] mb-3 uppercase">{"// Wallet Balances"}</h4>
+        <div className="space-y-1">
           {balances.map((balance) => (
             <div
               key={balance.token}
-              className="flex items-center justify-between p-3 rounded-lg bg-[#1A1D23]"
+              className="flex items-center justify-between p-2 hover:bg-[#00ff00]/5 transition-colors"
             >
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-emerald/10 flex items-center justify-center text-xs font-medium text-emerald">
+                <div className="w-6 h-6 border border-[#00ff00] flex items-center justify-center text-[10px] font-bold text-[#00ff00]">
                   {balance.token.slice(0, 2)}
                 </div>
                 <div>
-                  <span className="text-sm font-medium text-white">{balance.token}</span>
-                  <span className="block text-xs text-gray-500">{balance.amount}</span>
+                  <span className="text-xs text-[#00ff00]">{balance.token}</span>
+                  <span className="block text-[10px] text-[#006600]">{balance.amount}</span>
                 </div>
               </div>
-              <span className="text-sm font-mono text-gray-300">{balance.value}</span>
+              <span className="text-xs text-[#00aa00]">{balance.value}</span>
             </div>
           ))}
         </div>
