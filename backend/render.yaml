@@ -1,0 +1,22 @@
+# Render Blueprint for backend deployment
+# Deploy via: https://dashboard.render.com/new/blueprint
+
+services:
+  - type: web
+    name: ai-trading-agent-backend
+    env: python
+    region: oregon  # Change to your preferred region
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      # Add other env vars in Render dashboard or here:
+      # - key: COINGECKO_PRO_API_KEY
+      #   sync: false  # Set manually in dashboard
+    healthCheckPath: /health
+    autoDeploy: true
+

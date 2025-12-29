@@ -1,12 +1,13 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 export interface AgentRunRequest {
-  mode: 'analysis' | 'trade';
+  mode: 'analysis' | 'trade' | 'autonomous';
   token_pair: {
     token_a: string;
     token_b: string;
   };
-  switchboard_feed_id?: string;
+  pool_address?: string;  // CoinGecko pool address
+  privy_access_token?: string;  // For autonomous mode
 }
 
 export interface AgentRunResponse {
@@ -49,6 +50,10 @@ export async function runAgent(
     headers['X-PAYMENT'] = paymentHeader;
   }
 
+  if (request.privy_access_token) {
+    headers['Authorization'] = `Bearer ${request.privy_access_token}`;
+  }
+
   const response = await fetch(`${API_BASE_URL}/agent/run`, {
     method: 'POST',
     headers,
@@ -74,4 +79,5 @@ export async function getHealth(): Promise<{ status: string }> {
   }
   return response.json();
 }
+
 

@@ -52,3 +52,5 @@ def setup_logger(name: str = "ai_trading_agent", level: Optional[str] = None) ->
 # Create default logger instance
 logger = setup_logger()
 
+
+

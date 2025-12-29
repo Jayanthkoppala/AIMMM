@@ -1,4 +1,4 @@
-from . import agent, payment, ohlcv
+from . import agent, payment, ohlcv, sentiment, autonomous
 
-__all__ = ["agent", "payment", "ohlcv"]
+__all__ = ["agent", "payment", "ohlcv", "sentiment", "autonomous"]
 

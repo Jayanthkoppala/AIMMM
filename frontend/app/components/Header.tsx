@@ -1,9 +1,10 @@
 "use client";
 
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
+import { usePrivyWallet } from "@/app/hooks/use-privy-wallet";
 import { Button } from "./ui/button";
 import { WalletSelectionModal } from "./wallet-selection-modal";
-import { Wallet, LogOut, Activity, Copy, Check, ExternalLink } from "lucide-react";
+import { Wallet, LogOut, Activity, Copy, Check, ExternalLink, User } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { useState } from "react";
 import {
@@ -16,6 +17,7 @@ import {
 
 export function Header() {
   const { account, connected, disconnect, wallet } = useWallet();
+  const { authenticated, user, login, logout, privyUserId } = usePrivyWallet();
   const [copied, setCopied] = useState(false);
 
   const handleDisconnect = async () => {
@@ -81,6 +83,57 @@ export function Header() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Privy Authentication */}
+          {authenticated ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="gap-2 h-9 px-3"
+                >
+                  <User className="h-4 w-4" />
+                  <span className="hidden sm:inline">
+                    {user?.email?.address || user?.twitter?.username || user?.google?.email || "User"}
+                  </span>
+                  <span className="sm:hidden">User</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                <div className="px-2 py-1.5">
+                  <p className="text-xs text-muted-foreground mb-1">Privy Account</p>
+                  <p className="text-sm font-semibold">
+                    {user?.email?.address || user?.twitter?.username || user?.google?.email || "Authenticated"}
+                  </p>
+                  {privyUserId && (
+                    <p className="text-xs text-muted-foreground mt-1 font-mono truncate">
+                      {privyUserId.slice(0, 8)}...
+                    </p>
+                  )}
+                </div>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={logout}
+                  className="gap-2 text-destructive focus:text-destructive"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Logout
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={login}
+            >
+              <User className="h-4 w-4" />
+              <span className="hidden sm:inline">Login</span>
+              <span className="sm:hidden">Login</span>
+            </Button>
+          )}
+
+          {/* Aptos Wallet Connection (for manual trading) */}
           {connected ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

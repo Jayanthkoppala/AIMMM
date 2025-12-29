@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useAgent } from "@/app/hooks/use-agent";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
+import { usePrivyWallet } from "@/app/hooks/use-privy-wallet";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "./ui/card";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -20,36 +21,47 @@ import {
   ExternalLink,
   Loader2,
   BarChart3,
-  Zap
+  Zap,
+  Sparkles
 } from "lucide-react";
 
 const DEFAULT_TOKEN_A = process.env.NEXT_PUBLIC_TOKEN_A_ADDRESS || "0x...";
 const DEFAULT_TOKEN_B = process.env.NEXT_PUBLIC_TOKEN_B_ADDRESS || "0x...";
-const DEFAULT_FEEDS = process.env.NEXT_PUBLIC_SWITCHBOARD_FEEDS?.split(",") || [];
+const DEFAULT_POOL_ADDRESS = process.env.NEXT_PUBLIC_POOL_ADDRESS || "0xbcbf55e1004687d412f05856ef7c17dcaacc1be632ba2d67b71073d25b425c3b";
 
 export function AgentDashboard() {
   const { account, connected } = useWallet();
+  const { authenticated, getAccessToken } = usePrivyWallet();
   const { runAgent, isLoading, result } = useAgent();
   
-  const [mode, setMode] = useState<"analysis" | "trade">("analysis");
+  const [mode, setMode] = useState<"analysis" | "trade" | "autonomous">("analysis");
   const [tokenA, setTokenA] = useState(DEFAULT_TOKEN_A);
   const [tokenB, setTokenB] = useState(DEFAULT_TOKEN_B);
-  const [selectedFeed, setSelectedFeed] = useState(DEFAULT_FEEDS[0] || "");
+  const [poolAddress, setPoolAddress] = useState(DEFAULT_POOL_ADDRESS);
 
   const handleRunAgent = async () => {
-    if (!connected) {
-      alert("Please connect your wallet first");
-      return;
+    if (mode === "autonomous") {
+      if (!authenticated) {
+        alert("Please login with Privy to enable autonomous trading");
+        return;
+      }
+    } else {
+      if (!connected) {
+        alert("Please connect your wallet first");
+        return;
+      }
     }
 
     try {
+      const accessToken = mode === "autonomous" ? await getAccessToken() : undefined;
       await runAgent({
         mode,
         token_pair: {
           token_a: tokenA,
           token_b: tokenB,
         },
-        switchboard_feed_id: selectedFeed || undefined,
+        pool_address: poolAddress || undefined,
+        privy_access_token: accessToken,
       });
     } catch (error) {
       console.error("Agent execution failed:", error);
@@ -65,7 +77,7 @@ export function AgentDashboard() {
             <CardTitle className="text-2xl">AI Trading Agent</CardTitle>
           </div>
           <CardDescription className="text-base">
-            Configure your trading agent and execute trades on Uniswap V2
+            Configure your trading agent and execute trades on Mosaic DEX
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -91,7 +103,32 @@ export function AgentDashboard() {
                 <Zap className="h-4 w-4" />
                 Execute Trade
               </Button>
+              <Button
+                variant={mode === "autonomous" ? "default" : "outline"}
+                onClick={() => setMode("autonomous")}
+                className="flex-1 h-11 gap-2 bg-purple-600 hover:bg-purple-700"
+                size="lg"
+              >
+                <Sparkles className="h-4 w-4" />
+                Autonomous
+              </Button>
             </div>
+            {mode === "autonomous" && (
+              <div className="p-4 rounded-lg bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800">
+                <div className="flex items-start gap-2">
+                  <Sparkles className="h-5 w-5 text-purple-600 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-purple-900 dark:text-purple-100">
+                      Autonomous Trading Enabled
+                    </p>
+                    <p className="text-sm text-purple-700 dark:text-purple-300 mt-1">
+                      Your AI agent will execute trades automatically based on market conditions.
+                      No manual approval needed - powered by Privy embedded wallets.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <Separator />
@@ -122,31 +159,28 @@ export function AgentDashboard() {
             </div>
           </div>
 
-          {/* Switchboard Feed */}
-          {DEFAULT_FEEDS.length > 0 && (
-            <div className="space-y-2">
-              <Label htmlFor="feed" className="text-base font-semibold">Switchboard Feed</Label>
-              <Select
-                id="feed"
-                value={selectedFeed}
-                onChange={(e) => setSelectedFeed(e.target.value)}
-              >
-                <option value="">Default</option>
-                {DEFAULT_FEEDS.map((feed) => (
-                  <option key={feed} value={feed}>
-                    {feed}
-                  </option>
-                ))}
-              </Select>
-            </div>
-          )}
+          {/* Pool Address */}
+          <div className="space-y-2">
+            <Label htmlFor="poolAddress" className="text-base font-semibold">Pool Address</Label>
+            <Input
+              id="poolAddress"
+              type="text"
+              value={poolAddress}
+              onChange={(e) => setPoolAddress(e.target.value)}
+              placeholder="0xbcbf55e1004687d412f05856ef7c17dcaacc1be632ba2d67b71073d25b425c3b"
+              className="font-mono"
+            />
+            <p className="text-xs text-muted-foreground">
+              Enter the pool address for this token pair (data is collected automatically by the scheduler)
+            </p>
+          </div>
 
           <Separator />
 
           {/* Run Button */}
           <Button
             onClick={handleRunAgent}
-            disabled={isLoading || !connected}
+            disabled={isLoading || (mode !== "autonomous" && !connected) || (mode === "autonomous" && !authenticated)}
             className="w-full h-12 text-base gap-2"
             size="lg"
           >

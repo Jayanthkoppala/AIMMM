@@ -9,34 +9,31 @@ class Settings(BaseSettings):
     MOVEMENT_RPC: str = "https://testnet.movementnetwork.xyz/v1"
     MOVEMENT_NETWORK: str = "movement-testnet"
     
-    # Switchboard
-    # Aggregator addresses (on-chain addresses) - comma-separated
-    # These are the addresses of Aggregator objects deployed on Movement
-    # Format: 0x... (64-character hex addresses)
-    SWITCHBOARD_FEED_IDS: str = ""  # Comma-separated aggregator addresses
-    SWITCHBOARD_API_URL: str = "https://api.switchboard.xyz/api"  # Fallback API (if available)
+    # CoinGecko
+    COINGECKO_PRO_API_KEY: str = ""  # Load from environment variable COINGECKO_PRO_API_KEY
     
-    # Uniswap V2
-    UNISWAP_FACTORY_ADDRESS: str = ""
-    TOKEN_A_ADDRESS: str = ""
-    TOKEN_B_ADDRESS: str = ""
+    # Mosaic DEX
+    MOSAIC_API_KEY: str = ""
+    MOSAIC_API_URL: str = "https://api.mosaic.ag/v1"
     
     # OpenRouter
     OPENROUTER_API_KEY: str = ""
     OPENROUTER_MODEL: str = "openai/gpt-4o-mini"
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
     
+    # Grok AI (X.AI) - Sentiment Analysis
+    GROK_API_KEY: str = ""
+    
     # x402 Payment
     X402_RECEIVER_ADDRESS: str = ""
     X402_FACILITATOR_URL: str = "https://facilitator.stableyard.fi"
     BASE_AGENT_COST_USDC: float = 0.001
     
-    # Supabase
-    SUPABASE_URL: str = ""
-    SUPABASE_KEY: str = ""
     
     # Direct PostgreSQL Connection (alternative to Supabase client)
-    # Can use DATABASE_URL (Supabase format) or individual settings
+    # Can use DATABASE_URL (recommended) or individual settings below
+    # Supabase format: postgresql://postgres:[YOUR-PASSWORD]@db.xxx.supabase.co:5432/postgres
+    # Replace [YOUR-PASSWORD] with your actual Supabase database password
     DATABASE_URL: str = ""  # Format: postgresql://user:password@host:port/dbname
     DB_USER: str = ""
     DB_PASSWORD: str = ""
@@ -53,9 +50,33 @@ class Settings(BaseSettings):
     # Logging
     LOG_LEVEL: str = "INFO"
     
-    # OHLCV Collection
-    AUTO_START_OHLCV: str = "true"  # Auto-start OHLCV collection on server start
-    OHLCV_POLL_INTERVAL_SECONDS: int = 10  # How often to poll Switchboard (seconds)
+    # OHLCV Cache (CoinGecko)
+    OHLCV_CACHE_TTL_SECONDS: int = 300  # Cache OHLCV data for scheduler (5 minutes)
+    OHLCV_FRONTEND_CACHE_TTL_SECONDS: int = 60  # Cache for frontend requests (1 minute)
+    
+    # OHLCV Scheduler - API Usage Management
+    OHLCV_SCHEDULER_ENABLED: bool = True  # Enable automatic OHLCV data fetching
+    OHLCV_SCHEDULER_RESERVE_FOR_MANUAL: float = 0.2  # Reserve 20% of API calls for manual/frontend requests
+    OHLCV_SCHEDULER_MAX_POOLS: int = 10  # Maximum pools to monitor
+    OHLCV_SCHEDULER_INTERVAL_SECONDS: int = 324  # Dynamic interval (5.4 min for 2 pools) - will be calculated automatically
+    OHLCV_SCHEDULER_LOOKBACK_MINUTES: int = 5  # Always fetch at least 5 minutes back to catch missed candles
+    
+    # Sentiment Scheduler
+    SENTIMENT_SCHEDULER_ENABLED: bool = True  # Enable automatic sentiment analysis (runs every 24 hours)
+    
+    # Privy Configuration
+    PRIVY_APP_ID: str = ""
+    PRIVY_APP_SECRET: str = ""
+    PRIVY_VERIFICATION_KEY: str = ""  # For JWT verification
+    
+    # Autonomous Trading
+    AUTONOMOUS_WALLET_ENCRYPTION_KEY: str = ""  # AES-256 key for encrypting private keys (generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+    AUTONOMOUS_TRADING_ENABLED: bool = True
+    
+    # CoinGecko API Limits
+    COINGECKO_API_LIMIT_MONTHLY: int = 10000  # Monthly API call limit
+    COINGECKO_API_LIMIT_PER_MINUTE: int = 30  # Rate limit: 30 requests per minute
+    COINGECKO_API_CALLS_THIS_MONTH: int = 0  # Track API usage (reset monthly)
     
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
@@ -70,12 +91,8 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "ignore"  # Ignore extra fields from .env (like old UNISWAP_FACTORY_ADDRESS)
     
-    def get_switchboard_feeds(self) -> List[str]:
-        """Parse comma-separated feed IDs into list"""
-        if not self.SWITCHBOARD_FEED_IDS:
-            return []
-        return [feed_id.strip() for feed_id in self.SWITCHBOARD_FEED_IDS.split(",")]
 
 
 settings = Settings()

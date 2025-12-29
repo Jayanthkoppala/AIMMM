@@ -22,17 +22,22 @@ def validate_address(address: str) -> bool:
         return False
 
 
-def validate_feed_id(feed_id: str) -> bool:
-    """Validate Switchboard feed ID format"""
-    if not feed_id:
+def validate_pool_address(pool_address: str) -> bool:
+    """Validate CoinGecko pool address format"""
+    if not pool_address:
         return False
     
-    # Switchboard feed IDs are typically alphanumeric with dashes
-    pattern = r'^[a-zA-Z0-9\-_]+$'
-    return bool(re.match(pattern, feed_id))
-
-
-def validate_amount(amount: int) -> bool:
-    """Validate token amount"""
-    return amount > 0
+    # Pool addresses are hex strings with 0x prefix, typically 66 chars (0x + 64 hex)
+    if not pool_address.startswith("0x"):
+        return False
+    
+    addr = pool_address[2:]
+    if len(addr) != 64:
+        return False
+    
+    try:
+        int(addr, 16)
+        return True
+    except ValueError:
+        return False
 

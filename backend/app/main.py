@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from app.config import settings
-from app.routers import agent, payment, ohlcv
+from app.routers import agent, payment, ohlcv, sentiment, autonomous
 from app.utils.logger import logger
 from app.exceptions import BaseAPIException
 
@@ -90,6 +90,8 @@ async def log_requests(request: Request, call_next):
 app.include_router(agent.router)
 app.include_router(payment.router)
 app.include_router(ohlcv.router)
+app.include_router(sentiment.router)
+app.include_router(autonomous.router)
 
 
 @app.get("/health")
@@ -100,34 +102,22 @@ async def health_check():
 
 @app.get("/health/detailed")
 async def detailed_health_check():
-    """Detailed health check including database connection"""
-    from app.utils.database import db_connection
+    """Detailed health check"""
     from app.services.supabase import supabase_service
     
     health_status = {
         "status": "ok",
         "api": "operational",
         "database": {
-            "direct_postgres": "unknown",
             "supabase_client": "unknown"
         }
     }
-    
-    # Test direct PostgreSQL connection
-    try:
-        db_connected = db_connection.test_connection()
-        health_status["database"]["direct_postgres"] = "connected" if db_connected else "disconnected"
-    except Exception as e:
-        health_status["database"]["direct_postgres"] = f"error: {str(e)}"
     
     # Check Supabase client
     if supabase_service.client:
         health_status["database"]["supabase_client"] = "connected"
     else:
         health_status["database"]["supabase_client"] = "not_configured"
-    
-    # Overall status
-    if health_status["database"]["direct_postgres"] != "connected":
         health_status["status"] = "degraded"
     
     return health_status
@@ -146,24 +136,55 @@ async def root():
 @app.on_event("startup")
 async def startup_event():
     """Start background services on application startup."""
-    from app.services.ohlcv_collector import ohlcv_collector
-    
-    # Auto-start OHLCV collection if configured
-    # You can disable this by setting AUTO_START_OHLCV=false in .env
-    auto_start = getattr(settings, 'AUTO_START_OHLCV', 'true').lower() == 'true'
-    
-    if auto_start:
-        logger.info("Auto-starting OHLCV collection...")
-        await ohlcv_collector.start()
+    # Initialize CoinGecko database tables
+    from app.utils.db_init import init_coingecko_tables, reset_sequence
+    if init_coingecko_tables():
+        logger.info("CoinGecko database tables initialized")
+        # Ensure ID sequence is correct after initialization
+        reset_sequence()
     else:
-        logger.info("OHLCV collection auto-start disabled. Use /ohlcv/start to start manually.")
+        logger.error("Failed to initialize CoinGecko database tables")
+    
+    # Start OHLCV scheduler if enabled
+    if settings.OHLCV_SCHEDULER_ENABLED:
+        from app.services.ohlcv_scheduler import ohlcv_scheduler
+        ohlcv_scheduler.start()
+        logger.info("OHLCV scheduler started - fetching and storing data every minute")
+    else:
+        logger.info("OHLCV scheduler disabled - data will be fetched on-demand only")
+    
+    # Start sentiment scheduler if enabled
+    if settings.SENTIMENT_SCHEDULER_ENABLED:
+        from app.services.sentiment_scheduler import sentiment_scheduler
+        sentiment_scheduler.start()
+        logger.info("Sentiment scheduler started - will analyze sentiment every 24 hours")
+    else:
+        logger.info("Sentiment scheduler disabled - sentiment will be fetched on-demand only")
+    
+    # Start autonomous trading scheduler if enabled
+    if settings.AUTONOMOUS_TRADING_ENABLED:
+        from app.services.autonomous_scheduler import autonomous_scheduler
+        autonomous_scheduler.start()
+        logger.info("Autonomous trading scheduler started - checking markets every 5 minutes")
+    else:
+        logger.info("Autonomous trading scheduler disabled")
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Stop background services on application shutdown."""
-    from app.services.ohlcv_collector import ohlcv_collector
+    """Cleanup on application shutdown."""
+    if settings.OHLCV_SCHEDULER_ENABLED:
+        from app.services.ohlcv_scheduler import ohlcv_scheduler
+        ohlcv_scheduler.stop()
+        logger.info("OHLCV scheduler stopped")
     
-    logger.info("Stopping background services...")
-    await ohlcv_collector.stop()
+    if settings.SENTIMENT_SCHEDULER_ENABLED:
+        from app.services.sentiment_scheduler import sentiment_scheduler
+        sentiment_scheduler.stop()
+        logger.info("Sentiment scheduler stopped")
+    
+    if settings.AUTONOMOUS_TRADING_ENABLED:
+        from app.services.autonomous_scheduler import autonomous_scheduler
+        autonomous_scheduler.stop()
+        logger.info("Autonomous trading scheduler stopped")
 

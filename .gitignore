@@ -63,3 +63,7 @@ pnpm-debug.log*
 # OS
 Thumbs.db
 
+# Large files
+*.zip
+frontend.zip
+

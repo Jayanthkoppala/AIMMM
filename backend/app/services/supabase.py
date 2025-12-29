@@ -17,13 +17,58 @@ class SupabaseService:
         key_provided = bool(supabase_key and supabase_key.strip())
         
         if url_provided and key_provided:
-            try:
-                self.client = create_client(supabase_url.strip(), supabase_key.strip())
-                logger.info("Supabase client initialized successfully")
-            except Exception as e:
-                # Only warn if credentials were provided but invalid
-                logger.warning(f"Supabase client initialization failed (credentials may be invalid): {e}")
+            # Validate URL format before attempting connection
+            url = supabase_url.strip()
+            key = supabase_key.strip()
+            
+            # Basic URL validation
+            if not url.startswith('https://') or '.supabase.co' not in url:
+                logger.warning(
+                    f"Supabase URL format appears invalid (expected https://xxx.supabase.co): {url[:50]}..."
+                )
                 logger.info("Using direct PostgreSQL connection instead")
+                self.client = None
+                return
+            
+            # Basic API key validation (Supabase keys are typically long base64-like strings)
+            if len(key) < 50:
+                logger.warning(
+                    "Supabase API key appears too short (expected ~100+ characters). "
+                    "Please verify SUPABASE_KEY in your .env file."
+                )
+                logger.info("Using direct PostgreSQL connection instead")
+                self.client = None
+                return
+            
+            try:
+                self.client = create_client(url, key)
+                # Test the connection with a simple operation
+                logger.info("Supabase client initialized successfully")
+            except ValueError as e:
+                # ValueError typically indicates invalid credentials format
+                error_msg = str(e).lower()
+                if 'api key' in error_msg or 'invalid' in error_msg:
+                    logger.warning(
+                        f"Supabase API key validation failed: {e}. "
+                        "Please verify SUPABASE_KEY in your .env file matches your Supabase project. "
+                        "Ensure you're using the correct key type (anon key vs service_role key)."
+                    )
+                else:
+                    logger.warning(f"Supabase client initialization failed: {e}")
+                logger.info("Using direct PostgreSQL connection instead (this is non-fatal)")
+                self.client = None
+            except Exception as e:
+                # Other exceptions (network, etc.)
+                error_msg = str(e).lower()
+                if 'api key' in error_msg or 'invalid' in error_msg:
+                    logger.warning(
+                        f"Supabase API key appears invalid: {e}. "
+                        "Please verify SUPABASE_KEY in your .env file. "
+                        "The system will continue using direct PostgreSQL connection."
+                    )
+                else:
+                    logger.warning(f"Supabase client initialization failed: {e}")
+                logger.info("Using direct PostgreSQL connection instead (this is non-fatal)")
                 self.client = None
         else:
             # Credentials not provided - this is fine, we use direct PostgreSQL

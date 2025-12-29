@@ -6,15 +6,76 @@ from app.models.agent import LLMDecision
 from app.utils.logger import logger
 
 
-async def get_llm_decision(token_a_price: float, token_b_price: float) -> LLMDecision:
+async def get_llm_decision(
+    token_a_price: float, 
+    token_b_price: float,
+    ohlcv_context: Optional[str] = None,
+    sentiment_context: Optional[str] = None,
+    technical_context: Optional[str] = None
+) -> LLMDecision:
     """
     Get trading decision from OpenRouter LLM.
     Returns LLMDecision with action and confidence.
+    
+    Args:
+        token_a_price: Current price of token A
+        token_b_price: Current price of token B
+        ohlcv_context: Optional formatted OHLCV historical data string
+        sentiment_context: Optional formatted sentiment analysis string
+        technical_context: Optional formatted technical indicators string
     """
-    prompt = f"""You are a crypto trading agent.
+    # Build prompt with available context
+    price_info = f"Token A price: {token_a_price}\nToken B price: {token_b_price}"
+    
+    # Build context sections
+    context_sections = []
+    if ohlcv_context:
+        context_sections.append(f"Historical Market Data:\n{ohlcv_context}")
+    if technical_context:
+        context_sections.append(f"{technical_context}")
+    if sentiment_context:
+        context_sections.append(f"{sentiment_context}")
+    
+    context_text = "\n\n".join(context_sections) if context_sections else None
+    
+    if context_text:
+        prompt = f"""You are an expert crypto trading agent. Analyze the market data and make a trading decision.
 
-Token A price: {token_a_price}
-Token B price: {token_b_price}
+Current Prices:
+{price_info}
+
+{context_text}
+
+Analysis Guidelines:
+- Consider price trends (up/down/sideways) from OHLCV data
+- Evaluate technical indicators (RSI, MACD, moving averages, Bollinger Bands)
+- Consider sentiment analysis when available
+- Look for patterns in the recent candles
+- Higher confidence (0.7-1.0) when technical indicators, sentiment, and price action align
+- Lower confidence (0.3-0.6) for sideways or volatile markets or conflicting signals
+- Very low confidence (0.1-0.3) if data is insufficient
+- Sentiment can reinforce or contradict technical signals
+- RSI > 70 suggests overbought, RSI < 30 suggests oversold
+- MACD crossing above signal is bullish, below is bearish
+- Price above moving averages suggests uptrend, below suggests downtrend
+
+Rules:
+- Only suggest BUY, SELL, or HOLD
+- Include confidence from 0 to 1
+- BUY if trend is up, price is near support, and sentiment is bullish
+- SELL if trend is down, price is near resistance, and sentiment is bearish
+- HOLD if market is sideways, uncertain, or conflicting signals
+- No explanations, only JSON response
+
+Respond in JSON:
+{{
+  "action": "BUY | SELL | HOLD",
+  "confidence": number
+}}"""
+    else:
+        prompt = f"""You are a crypto trading agent.
+
+{price_info}
 
 Rules:
 - Only suggest BUY, SELL, or HOLD

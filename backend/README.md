@@ -33,5 +33,12 @@ See `.env.example` for all required environment variables.
 
 ## Development
 
-The backend uses FastAPI with async/await patterns. All external API calls (OpenRouter, Switchboard) are async.
+The backend uses FastAPI with async/await patterns. All external API calls (OpenRouter, CoinGecko) are async.
+
+## Architecture
+
+- **CoinGecko Integration**: Fetches pre-aggregated OHLCV candles on-demand (no background polling)
+- **Supabase**: User sessions, agent execution history, payment records
+- **Mosaic DEX**: Swap execution on Movement Network
+- **OpenRouter**: LLM-powered trading decisions
 
