@@ -13,6 +13,14 @@ const nextConfig: NextConfig = {
       '.json',
     ],
   },
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: 'http://localhost:8000/:path*',
+      },
+    ];
+  },
   async headers() {
     return [
       {
@@ -35,4 +43,3 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
-
