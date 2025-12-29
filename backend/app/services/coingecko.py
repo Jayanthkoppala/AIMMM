@@ -202,6 +202,56 @@ def _extract_ohlcv_list(response) -> List:
     return ohlcv_list if ohlcv_list else []
 
 
+def _forward_fill_empty_candles(candles: List[Dict]) -> List[Dict]:
+    """
+    Forward-fill empty candles (those with all zero OHLCV values).
+    
+    For low-liquidity pools, CoinGecko may return empty intervals with zero values.
+    This function fills them with the previous candle's close price.
+    
+    Args:
+        candles: List of candle dicts sorted by timestamp
+    
+    Returns:
+        List of candles with empty ones filled
+    """
+    if not candles:
+        return candles
+    
+    # Sort by timestamp first
+    candles = sorted(candles, key=lambda x: x.get('timestamp', 0))
+    
+    filled_candles = []
+    last_valid_close = None
+    
+    for candle in candles:
+        is_empty = all(candle.get(k, 0) == 0 for k in ['open', 'high', 'low', 'close'])
+        
+        if is_empty and last_valid_close is not None:
+            # Fill with previous close (flat candle - no activity)
+            filled_candle = {
+                'timestamp': candle['timestamp'],
+                'open': last_valid_close,
+                'high': last_valid_close,
+                'low': last_valid_close,
+                'close': last_valid_close,
+                'volume': 0.0  # No volume for synthetic candles
+            }
+            filled_candles.append(filled_candle)
+        else:
+            filled_candles.append(candle)
+            # Update last valid close
+            if candle.get('close', 0) > 0:
+                last_valid_close = candle['close']
+    
+    # Count how many were filled
+    empty_count = sum(1 for c in candles if all(c.get(k, 0) == 0 for k in ['open', 'high', 'low', 'close']))
+    if empty_count > 0:
+        logger.debug(f"Forward-filled {empty_count} empty candles out of {len(candles)}")
+    
+    return filled_candles
+
+
 async def get_pool_ohlcv(
     pool_address: str,
     network: str = "movement",
@@ -211,7 +261,7 @@ async def get_pool_ohlcv(
     currency: str = "usd",
     token: str = "quote",
     before_timestamp: Optional[int] = None,
-    include_empty_intervals: bool = False
+    include_empty_intervals: bool = True  # Include empty intervals to avoid gaps in low-liquidity pools
 ) -> Tuple[List[Dict], Optional[Dict]]:
     """
     Get OHLCV candles for a pool on CoinGecko.
@@ -282,6 +332,9 @@ async def get_pool_ohlcv(
         
         # Validate candles
         if candles:
+            # Forward-fill empty candles (zero OHLCV values) with previous candle's close
+            candles = _forward_fill_empty_candles(candles)
+            
             # Check for reasonable price values
             first_candle = candles[0]
             if all(first_candle[k] == 0 for k in ['open', 'high', 'low', 'close']):

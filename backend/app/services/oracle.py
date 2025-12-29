@@ -159,7 +159,8 @@ async def get_token_prices_from_pool(
 async def get_token_prices(
     token_a: str,
     token_b: str,
-    pool_address: Optional[str] = None
+    pool_address: Optional[str] = None,
+    pool_id: Optional[int] = None
 ) -> Dict[str, float]:
     """
     Get prices for token pair.
@@ -167,17 +168,46 @@ async def get_token_prices(
     Args:
         token_a: Token A address (for reference, not used with CoinGecko pools)
         token_b: Token B address (for reference, not used with CoinGecko pools)
-        pool_address: CoinGecko pool address (required)
+        pool_address: CoinGecko pool address (preferred)
+        pool_id: Pool ID for database fallback
     
     Returns:
         Dict with token_a_price, token_b_price, and timestamp
     """
-    if not pool_address:
-        logger.warning("No pool_address provided, using fallback prices")
-        return {
-            "token_a_price": 1.0,
-            "token_b_price": 1.5,
-            "timestamp": int(datetime.now().timestamp())
-        }
+    if pool_address:
+        return await get_token_prices_from_pool(pool_address, network="movement")
     
-    return await get_token_prices_from_pool(pool_address, network="movement")
+    # Try to get price from database using pool_id
+    if pool_id:
+        try:
+            from app.utils.database import db_connection
+            query = """
+                SELECT close_price, timestamp
+                FROM ohlcv_candles
+                WHERE pool_id = %s
+                ORDER BY timestamp DESC
+                LIMIT 1
+            """
+            result = db_connection.execute_query(query, (pool_id,), fetch_one=True)
+            if result and result.get('close_price'):
+                price = float(result.get('close_price', 0))
+                if price > 0:
+                    logger.info(f"Using database price ${price:.6f} for pool_id {pool_id}")
+                    return {
+                        "token_a_price": price,
+                        "token_b_price": price,
+                        "timestamp": int(datetime.now().timestamp())
+                    }
+        except Exception as e:
+            logger.error(f"Error fetching price from database: {e}")
+    
+    # No valid price source - return 0 to indicate error, NOT fallback value
+    logger.error(
+        f"No valid price source available: pool_address={pool_address}, pool_id={pool_id}. "
+        f"Returning 0 to prevent false triggers."
+    )
+    return {
+        "token_a_price": 0.0,
+        "token_b_price": 0.0,
+        "timestamp": int(datetime.now().timestamp())
+    }

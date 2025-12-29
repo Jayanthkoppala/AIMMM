@@ -13,12 +13,12 @@ class Settings(BaseSettings):
     COINGECKO_PRO_API_KEY: str = ""  # Load from environment variable COINGECKO_PRO_API_KEY
     
     # Mosaic DEX
-    MOSAIC_API_KEY: str = ""
+    MOSAIC_API_KEY: str = "RgutcJWyaiBNCYDig52D3pkW6M8VEl-7"
     MOSAIC_API_URL: str = "https://api.mosaic.ag/v1"
     
     # OpenRouter
     OPENROUTER_API_KEY: str = ""
-    OPENROUTER_MODEL: str = "openai/gpt-4o-mini"
+    OPENROUTER_MODEL: str = "deepseek/deepseek-r1"  # Default reasoning model
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
     
     # Grok AI (X.AI) - Sentiment Analysis
@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     OHLCV_SCHEDULER_RESERVE_FOR_MANUAL: float = 0.2  # Reserve 20% of API calls for manual/frontend requests
     OHLCV_SCHEDULER_MAX_POOLS: int = 10  # Maximum pools to monitor
     OHLCV_SCHEDULER_INTERVAL_SECONDS: int = 324  # Dynamic interval (5.4 min for 2 pools) - will be calculated automatically
-    OHLCV_SCHEDULER_LOOKBACK_MINUTES: int = 5  # Always fetch at least 5 minutes back to catch missed candles
+    OHLCV_SCHEDULER_LOOKBACK_MINUTES: int = 240  # Fetch last 4 hours on initial run (fallback if backfill not triggered)
     
     # Sentiment Scheduler
     SENTIMENT_SCHEDULER_ENABLED: bool = True  # Enable automatic sentiment analysis (runs every 24 hours)

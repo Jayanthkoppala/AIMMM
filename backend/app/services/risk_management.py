@@ -250,6 +250,108 @@ class RiskManagementAgent:
             return False, f"Position value (${position_value:.2f}) below minimum (${self.min_position_size_usd})"
         
         return True, None
+    
+    def calculate_portfolio_diversification_score(
+        self,
+        balances: list,
+        total_value: float
+    ) -> Dict[str, float]:
+        """
+        Calculate portfolio diversification score for DEX spot trading.
+        
+        Args:
+            balances: List of token balances with usd_value
+            total_value: Total portfolio value
+        
+        Returns:
+            Dict with diversification_score (0-1) and concentration_risk
+        """
+        if not balances or total_value <= 0:
+            return {
+                "diversification_score": 0.0,
+                "concentration_risk": 1.0,
+                "largest_position_pct": 0.0
+            }
+        
+        # Calculate Herfindahl-Hirschman Index (HHI) for concentration
+        # HHI = sum of squared market shares
+        hhi = 0
+        largest_position_pct = 0
+        
+        for balance in balances:
+            usd_value = float(balance.get('usd_value', 0))
+            position_pct = (usd_value / total_value) if total_value > 0 else 0
+            hhi += position_pct ** 2
+            largest_position_pct = max(largest_position_pct, position_pct * 100)
+        
+        # Diversification score: 1 - HHI (higher is better)
+        # Perfect diversification (many equal positions) = 0 HHI = 1 score
+        # Full concentration (1 position) = 1 HHI = 0 score
+        diversification_score = 1 - hhi
+        
+        return {
+            "diversification_score": diversification_score,
+            "concentration_risk": hhi,
+            "largest_position_pct": largest_position_pct
+        }
+    
+    def check_min_trade_size_for_gas(
+        self,
+        trade_value_usd: float,
+        estimated_gas_usd: float = 0.05
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Check if trade size is worth the gas cost (DEX spot trading).
+        
+        Args:
+            trade_value_usd: Trade value in USD
+            estimated_gas_usd: Estimated gas cost in USD
+        
+        Returns:
+            Tuple of (is_efficient, warning_message)
+        """
+        if trade_value_usd <= 0:
+            return False, "Trade value must be positive"
+        
+        # Gas should be less than 5% of trade value
+        gas_ratio = (estimated_gas_usd / trade_value_usd) * 100
+        
+        if gas_ratio > 5.0:
+            return False, f"Gas cost ({gas_ratio:.2f}% of trade) is too high. Consider larger trade size."
+        elif gas_ratio > 2.0:
+            return True, f"Gas cost is {gas_ratio:.2f}% of trade value (acceptable but high)"
+        
+        return True, None
+    
+    def validate_slippage_tolerance(
+        self,
+        expected_output: float,
+        min_output_with_slippage: float,
+        max_slippage_pct: float = 1.0
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Validate slippage is within acceptable range for DEX swaps.
+        
+        Args:
+            expected_output: Expected output amount
+            min_output_with_slippage: Minimum output with slippage
+            max_slippage_pct: Maximum acceptable slippage percentage
+        
+        Returns:
+            Tuple of (is_acceptable, warning_message)
+        """
+        if expected_output <= 0:
+            return False, "Expected output must be positive"
+        
+        slippage_pct = ((expected_output - min_output_with_slippage) / expected_output) * 100
+        
+        if slippage_pct > max_slippage_pct:
+            return False, f"Slippage ({slippage_pct:.2f}%) exceeds maximum ({max_slippage_pct}%)"
+        
+        if slippage_pct > max_slippage_pct * 0.7:
+            return True, f"Slippage is {slippage_pct:.2f}% (near limit of {max_slippage_pct}%)"
+        
+        return True, None
 
 
 # Create singleton instance

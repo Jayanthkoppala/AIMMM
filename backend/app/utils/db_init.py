@@ -63,6 +63,144 @@ def reset_sequence():
         logger.warning(f"Could not reset ohlcv_candles sequence: {e}")
 
 
+def init_strategy_tables() -> bool:
+    """
+    Initialize strategy builder tables: user_strategies, strategy_executions, paper_trading_balances.
+    Returns True if successful, False otherwise.
+    """
+    if not db_connection.pool:
+        logger.warning("Database connection not available, cannot initialize strategy tables")
+        return False
+    
+    try:
+        logger.info("Creating strategy builder tables...")
+        
+        # 1. Create user_strategies table
+        create_strategies_query = """
+            CREATE TABLE IF NOT EXISTS user_strategies (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id VARCHAR(255) NOT NULL,
+                wallet_address VARCHAR(255),
+                name VARCHAR(200) NOT NULL,
+                description TEXT,
+                visibility VARCHAR(20) DEFAULT 'private',
+                is_active BOOLEAN DEFAULT FALSE,
+                pool_id INTEGER REFERENCES pools(id) ON DELETE SET NULL,
+                pool_address TEXT,
+                strategy_config JSONB NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                last_execution TIMESTAMP WITH TIME ZONE,
+                execution_interval INTEGER DEFAULT 5
+            )
+        """
+        result = db_connection.execute_query(create_strategies_query, fetch_all=False)
+        if result is None:
+            logger.error("Failed to create user_strategies table")
+            return False
+        logger.info("Created user_strategies table")
+        
+        # Add pool columns if table already exists (migration)
+        try:
+            alter_query1 = """
+                ALTER TABLE user_strategies 
+                ADD COLUMN IF NOT EXISTS pool_id INTEGER REFERENCES pools(id) ON DELETE SET NULL
+            """
+            db_connection.execute_query(alter_query1, fetch_all=False)
+            
+            alter_query2 = """
+                ALTER TABLE user_strategies 
+                ADD COLUMN IF NOT EXISTS pool_address TEXT
+            """
+            db_connection.execute_query(alter_query2, fetch_all=False)
+            logger.info("Added pool columns to user_strategies table (if not exists)")
+        except Exception as e:
+            logger.warning(f"Error adding pool columns (may already exist): {e}")
+        
+        # 2. Create strategy_executions table
+        create_executions_query = """
+            CREATE TABLE IF NOT EXISTS strategy_executions (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                strategy_id UUID NOT NULL REFERENCES user_strategies(id) ON DELETE CASCADE,
+                user_id VARCHAR(255) NOT NULL,
+                execution_timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                
+                llm_model VARCHAR(100) NOT NULL,
+                decision VARCHAR(20) NOT NULL,
+                confidence DECIMAL(5, 4) NOT NULL,
+                reasoning TEXT,
+                
+                execution_mode VARCHAR(20) NOT NULL,
+                duration_seconds DECIMAL(10, 3),
+                llm_cost DECIMAL(10, 6),
+                
+                trade_executed BOOLEAN DEFAULT FALSE,
+                tx_hash VARCHAR(255),
+                symbol VARCHAR(50),
+                side VARCHAR(10),
+                amount_in DECIMAL(20, 8),
+                amount_out DECIMAL(20, 8),
+                price DECIMAL(20, 8),
+                
+                market_data JSONB
+            )
+        """
+        result = db_connection.execute_query(create_executions_query, fetch_all=False)
+        if result is None:
+            logger.error("Failed to create strategy_executions table")
+            return False
+        logger.info("Created strategy_executions table")
+        
+        # 3. Create paper_trading_balances table
+        create_balances_query = """
+            CREATE TABLE IF NOT EXISTS paper_trading_balances (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                strategy_id UUID NOT NULL REFERENCES user_strategies(id) ON DELETE CASCADE,
+                token_address VARCHAR(255) NOT NULL,
+                token_symbol VARCHAR(20) NOT NULL,
+                balance DECIMAL(30, 8) NOT NULL DEFAULT 0,
+                usd_value DECIMAL(20, 8),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                UNIQUE(strategy_id, token_address)
+            )
+        """
+        result = db_connection.execute_query(create_balances_query, fetch_all=False)
+        if result is None:
+            logger.error("Failed to create paper_trading_balances table")
+            return False
+        logger.info("Created paper_trading_balances table")
+        
+        # Create indexes
+        import time
+        time.sleep(0.1)
+        
+        indexes = [
+            "CREATE INDEX IF NOT EXISTS idx_strategies_user_id ON user_strategies(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_strategies_active ON user_strategies(is_active) WHERE is_active = TRUE",
+            "CREATE INDEX IF NOT EXISTS idx_strategies_visibility ON user_strategies(visibility)",
+            "CREATE INDEX IF NOT EXISTS idx_executions_strategy_id ON strategy_executions(strategy_id, execution_timestamp DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_executions_user_id ON strategy_executions(user_id, execution_timestamp DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_balances_strategy_id ON paper_trading_balances(strategy_id)"
+        ]
+        
+        for idx_query in indexes:
+            try:
+                result = db_connection.execute_query(idx_query, fetch_all=False)
+                if result is None:
+                    logger.warning(f"Failed to create index: {idx_query[:50]}...")
+                else:
+                    logger.debug(f"Created index: {idx_query[:50]}...")
+            except Exception as e:
+                logger.warning(f"Error creating index (may already exist): {e}")
+        
+        logger.info("Strategy builder tables initialized successfully")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error initializing strategy builder tables: {e}", exc_info=True)
+        return False
+
+
 def init_coingecko_tables() -> bool:
     """
     Initialize CoinGecko tables: pools, ohlcv_candles, technical_indicators, sentiment_analysis,
@@ -76,10 +214,10 @@ def init_coingecko_tables() -> bool:
     try:
         logger.info("Creating CoinGecko tables...")
         
-        # 1. Create pools table
+        # 1. Create pools table (with simple integer ID for readability)
         create_pools_query = """
             CREATE TABLE IF NOT EXISTS pools (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                id SERIAL PRIMARY KEY,
                 pool_address TEXT NOT NULL UNIQUE,
                 network TEXT NOT NULL DEFAULT 'movement',
                 pool_name TEXT,
@@ -118,7 +256,7 @@ def init_coingecko_tables() -> bool:
         create_ohlcv_query = """
             CREATE TABLE IF NOT EXISTS ohlcv_candles (
                 id BIGSERIAL PRIMARY KEY,
-                pool_id UUID NOT NULL REFERENCES pools(id) ON DELETE CASCADE,
+                pool_id INTEGER NOT NULL REFERENCES pools(id) ON DELETE CASCADE,
                 pool_name TEXT,
                 timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
                 open_price NUMERIC NOT NULL,
@@ -184,7 +322,7 @@ def init_coingecko_tables() -> bool:
         create_indicators_query = """
             CREATE TABLE IF NOT EXISTS technical_indicators (
                 id BIGSERIAL PRIMARY KEY,
-                pool_id UUID NOT NULL REFERENCES pools(id) ON DELETE CASCADE,
+                pool_id INTEGER NOT NULL REFERENCES pools(id) ON DELETE CASCADE,
                 candle_id BIGINT REFERENCES ohlcv_candles(id) ON DELETE CASCADE,
                 timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
                 timeframe TEXT NOT NULL DEFAULT '1m',
@@ -305,6 +443,7 @@ def init_coingecko_tables() -> bool:
         create_sentiment_query = """
             CREATE TABLE IF NOT EXISTS sentiment_analysis (
                 id BIGSERIAL PRIMARY KEY,
+                pool_id INTEGER REFERENCES pools(id) ON DELETE CASCADE,
                 token_a_address TEXT NOT NULL,
                 token_b_address TEXT NOT NULL,
                 token_a_symbol TEXT,
@@ -326,7 +465,7 @@ def init_coingecko_tables() -> bool:
                 timeframe TEXT NOT NULL DEFAULT '24h',
                 analyzed_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                UNIQUE(token_a_address, token_b_address, analyzed_at)
+                UNIQUE(pool_id, analyzed_at)
             )
         """
         result = db_connection.execute_query(create_sentiment_query, fetch_all=False)
@@ -334,6 +473,29 @@ def init_coingecko_tables() -> bool:
             logger.error("Failed to create sentiment_analysis table")
             return False
         logger.info("Created sentiment_analysis table")
+        
+        # Migration: Add pool_id column if table already exists without it
+        try:
+            alter_sentiment_query = """
+                ALTER TABLE sentiment_analysis 
+                ADD COLUMN IF NOT EXISTS pool_id INTEGER REFERENCES pools(id) ON DELETE CASCADE
+            """
+            db_connection.execute_query(alter_sentiment_query, fetch_all=False)
+            logger.info("Added pool_id column to sentiment_analysis table (if not exists)")
+            
+            # Update existing sentiment records to link with pools based on token addresses
+            update_pool_id_query = """
+                UPDATE sentiment_analysis sa
+                SET pool_id = p.id
+                FROM pools p
+                WHERE sa.pool_id IS NULL
+                AND sa.token_a_address = p.token_a_address
+                AND sa.token_b_address = p.token_b_address
+            """
+            db_connection.execute_query(update_pool_id_query, fetch_all=False)
+            logger.info("Updated existing sentiment records with pool_id")
+        except Exception as e:
+            logger.warning(f"Error migrating sentiment_analysis table (may already have pool_id): {e}")
         
         # 5. Create autonomous_wallets table
         create_autonomous_wallets_query = """
@@ -398,7 +560,7 @@ def init_coingecko_tables() -> bool:
             # Index for foreign key lookups
             "CREATE INDEX IF NOT EXISTS idx_indicators_candle_id ON technical_indicators(candle_id)",
             # Sentiment analysis indexes
-            "CREATE INDEX IF NOT EXISTS idx_sentiment_token_pair ON sentiment_analysis(token_a_address, token_b_address)",
+            "CREATE INDEX IF NOT EXISTS idx_sentiment_pool_id ON sentiment_analysis(pool_id)",
             "CREATE INDEX IF NOT EXISTS idx_sentiment_analyzed_at ON sentiment_analysis(analyzed_at DESC)",
             # Autonomous wallets indexes
             "CREATE INDEX IF NOT EXISTS idx_autonomous_wallets_privy_user ON autonomous_wallets(privy_user_id)",
@@ -416,10 +578,84 @@ def init_coingecko_tables() -> bool:
                 # Index might already exist or table structure issue
                 logger.warning(f"Error creating index (may already exist): {e}")
         
+        # Seed default pools
+        seed_default_pools()
+        
         logger.info("CoinGecko tables initialized successfully")
         return True
         
     except Exception as e:
         logger.error(f"Error initializing CoinGecko tables: {e}", exc_info=True)
         return False
+
+
+def seed_default_pools():
+    """
+    Seed the database with default trading pools.
+    Uses INSERT ... ON CONFLICT to avoid duplicates.
+    """
+    if not db_connection.pool:
+        logger.warning("Database connection not available, cannot seed pools")
+        return
+    
+    default_pools = [
+        {
+            "pool_address": "0x83193fdc4d23fca53b2a36aef082886f4ef1c345a2c721b31c6e90a51173014d",
+            "pool_name": "USDC.e / WETH.e",
+            "token_a_symbol": "USDC.e",
+            "token_a_address": "0x83121c9f9b0527d1f056e21a950d6bf3b9e9e2e8353d0e95ccea726713cbea39",
+            "token_b_symbol": "WETH.e",
+            "token_b_address": "0x908828f4fb0213d4034c3ded1630bbd904e8a3a6bf3c63270887f0b06653a376"
+        },
+        {
+            "pool_address": "0xbcbf55e1004687d412f05856ef7c17dcaacc1be632ba2d67b71073d25b425c3b",
+            "pool_name": "USDC.e / MOVE",
+            "token_a_symbol": "USDC.e",
+            "token_a_address": "0x83121c9f9b0527d1f056e21a950d6bf3b9e9e2e8353d0e95ccea726713cbea39",
+            "token_b_symbol": "MOVE",
+            "token_b_address": "0x000000000000000000000000000000000000000a"
+        }
+    ]
+    
+    try:
+        insert_query = """
+            INSERT INTO pools (
+                pool_address, network, pool_name, 
+                token_a_symbol, token_a_address, 
+                token_b_symbol, token_b_address,
+                is_active
+            ) VALUES (
+                %s, 'movement', %s, %s, %s, %s, %s, TRUE
+            )
+            ON CONFLICT (pool_address) 
+            DO UPDATE SET 
+                pool_name = EXCLUDED.pool_name,
+                token_a_symbol = EXCLUDED.token_a_symbol,
+                token_a_address = EXCLUDED.token_a_address,
+                token_b_symbol = EXCLUDED.token_b_symbol,
+                token_b_address = EXCLUDED.token_b_address,
+                is_active = TRUE,
+                updated_at = NOW()
+            RETURNING id
+        """
+        
+        for pool in default_pools:
+            params = (
+                pool["pool_address"],
+                pool["pool_name"],
+                pool["token_a_symbol"],
+                pool["token_a_address"],
+                pool["token_b_symbol"],
+                pool["token_b_address"]
+            )
+            result = db_connection.execute_query(insert_query, params, fetch_one=True)
+            if result:
+                logger.info(f"Seeded pool: {pool['pool_name']} (id: {result.get('id')})")
+            else:
+                logger.warning(f"Failed to seed pool: {pool['pool_name']}")
+        
+        logger.info(f"Seeded {len(default_pools)} default pools")
+        
+    except Exception as e:
+        logger.error(f"Error seeding default pools: {e}", exc_info=True)
 

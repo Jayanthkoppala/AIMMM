@@ -1,9 +1,30 @@
 import httpx
 import json
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 from app.config import settings
 from app.models.agent import LLMDecision
 from app.utils.logger import logger
+
+
+# Models that DON'T support response_format: json_object
+# These need special handling with prompt-based JSON extraction
+MODELS_WITHOUT_JSON_MODE = {
+    "openai/o1",
+    "openai/o1-mini", 
+    "openai/o3-mini",
+    "deepseek/deepseek-r1",
+    "deepseek/deepseek-reasoner",
+    "qwen/qwq-32b-preview",
+    "google/gemini-2.0-flash-thinking-exp",
+    "x-ai/grok-2-1212",
+    "x-ai/grok-2-vision-1212",
+    "anthropic/claude-opus-4.1",
+}
+
+
+def _supports_json_mode(model: str) -> bool:
+    """Check if a model supports response_format: json_object"""
+    return model not in MODELS_WITHOUT_JSON_MODE
 
 
 async def get_llm_decision(
@@ -89,6 +110,25 @@ Respond in JSON:
 }}"""
 
     try:
+        model = settings.OPENROUTER_MODEL
+        supports_json = _supports_json_mode(model)
+        
+        # Build request payload
+        request_payload = {
+            "model": model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            "temperature": 0.3,
+        }
+        
+        # Only add response_format for models that support it
+        if supports_json:
+            request_payload["response_format"] = {"type": "json_object"}
+        
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{settings.OPENROUTER_BASE_URL}/chat/completions",
@@ -98,18 +138,8 @@ Respond in JSON:
                     "HTTP-Referer": "https://github.com/ai-trading-agent",
                     "X-Title": "AI Trading Agent"
                 },
-                json={
-                    "model": settings.OPENROUTER_MODEL,
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": prompt
-                        }
-                    ],
-                    "temperature": 0.3,
-                    "response_format": {"type": "json_object"}
-                },
-                timeout=30.0
+                json=request_payload,
+                timeout=60.0  # Increased timeout for reasoning models
             )
             response.raise_for_status()
             data = response.json()
@@ -117,7 +147,7 @@ Respond in JSON:
             # Extract JSON from response
             content = data.get("choices", [{}])[0].get("message", {}).get("content", "{}")
             
-            # Parse JSON response
+            # Parse JSON response - handle various formats
             try:
                 decision_data = json.loads(content)
             except json.JSONDecodeError:
@@ -133,7 +163,13 @@ Respond in JSON:
                     content = content[json_start:json_end].strip()
                     decision_data = json.loads(content)
                 else:
-                    raise ValueError("No valid JSON found in response")
+                    # Try to find JSON object in text
+                    import re
+                    json_match = re.search(r'\{[^{}]*"action"[^{}]*\}', content, re.DOTALL)
+                    if json_match:
+                        decision_data = json.loads(json_match.group())
+                    else:
+                        raise ValueError("No valid JSON found in response")
             
             # Validate and create LLMDecision
             action = decision_data.get("action", "HOLD").upper()
@@ -152,4 +188,209 @@ Respond in JSON:
     except Exception as e:
         logger.error(f"Error getting LLM decision: {e}", exc_info=True)
         return LLMDecision(action="HOLD", confidence=0.3)
+
+
+async def get_strategy_decision(
+    portfolio_state: Dict[str, Any],
+    market_data: Dict[str, Any],
+    strategy_config: Dict[str, Any],
+    llm_model: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Get trading decision for DEX spot strategy execution.
+    
+    Args:
+        portfolio_state: Current portfolio balances and value
+        market_data: OHLCV, technical indicators, sentiment data
+        strategy_config: Strategy configuration
+        llm_model: Optional LLM model override
+    
+    Returns:
+        {
+            "action": "BUY" | "SELL" | "HOLD" | "CLOSE_POSITION",
+            "token": str (optional),
+            "amount_usdc": float (optional),
+            "confidence": float,
+            "reasoning": str
+        }
+    """
+    try:
+        # Extract paper trading config
+        paper_config = strategy_config.get('paper_trading_config', {})
+        capital_per_trade = paper_config.get('capital_per_trade', 100)
+        max_positions = paper_config.get('max_concurrent_positions', 5)
+        stop_loss_pct = paper_config.get('stop_loss_pct', 0.05)
+        take_profit_pct = paper_config.get('take_profit_pct', 0.10)
+        
+        # Extract portfolio info
+        balances = portfolio_state.get('balances', [])
+        total_value = portfolio_state.get('total_value', 0)
+        initial_capital = portfolio_state.get('initial_capital', 1000)
+        unrealized_pnl = portfolio_state.get('unrealized_pnl', 0)
+        
+        # Format balances for prompt
+        balance_str = "\n".join([
+            f"- {b['token_symbol']}: {b['balance']:.4f} (${b['usd_value']:.2f})"
+            for b in balances
+        ])
+        
+        # Count active positions (non-USDC)
+        active_positions = sum(1 for b in balances if b['token_symbol'] != 'USDC' and b['balance'] > 0)
+        
+        # Get available USDC
+        usdc_balance = next((b['balance'] for b in balances if b['token_symbol'] == 'USDC'), 0)
+        
+        # Extract market data
+        ohlcv_data = market_data.get('ohlcv', '')
+        technical_data = market_data.get('technical', '')
+        sentiment_data = market_data.get('sentiment', '')
+        current_price = market_data.get('current_price', 0)
+        token_symbol = market_data.get('token_symbol', 'MOVE')
+        
+        # Build comprehensive prompt for DEX spot trading
+        system_prompt = f"""You are an AI trading agent managing a DEX spot trading portfolio.
+
+CURRENT PORTFOLIO:
+{balance_str}
+- Total Portfolio Value: ${total_value:.2f}
+- Initial Capital: ${initial_capital:.2f}
+- Unrealized P&L: ${unrealized_pnl:.2f} ({portfolio_state.get('unrealized_pnl_pct', 0):.2f}%)
+
+PAPER TRADING PARAMETERS:
+- Available USDC: ${usdc_balance:.2f}
+- Capital per trade: ${capital_per_trade}
+- Max positions: {max_positions}
+- Current active positions: {active_positions}
+- Stop-loss: {stop_loss_pct * 100}%
+- Take-profit: {take_profit_pct * 100}%
+
+CURRENT MARKET ({token_symbol}):
+- Current Price: ${current_price:.6f}
+
+HISTORICAL DATA:
+{ohlcv_data}
+
+TECHNICAL INDICATORS:
+{technical_data}
+
+SENTIMENT ANALYSIS:
+{sentiment_data}
+
+TRADING RULES:
+- You can BUY tokens (swap USDC → {token_symbol})
+- You can SELL tokens (swap {token_symbol} → USDC) 
+- You can CLOSE_POSITION (sell all holdings of a token)
+- You can HOLD (do nothing)
+- Minimum confidence for new trades: 0.70
+- Cannot open new positions if active positions >= max positions
+- Cannot buy if USDC balance < capital_per_trade
+- Consider gas costs and slippage on Movement network
+- Analyze technical indicators (RSI, MACD, moving averages)
+- Consider sentiment signals
+- Look for clear entry/exit signals
+
+ANALYSIS APPROACH:
+1. Review technical indicators for trend direction
+2. Check sentiment for market confidence
+3. Evaluate risk/reward ratio
+4. Ensure sufficient capital and position limits
+5. Make decision with confidence score
+
+OUTPUT FORMAT (JSON only, no explanations):
+{{
+  "action": "BUY | SELL | HOLD | CLOSE_POSITION",
+  "token": "{token_symbol}",
+  "amount_usdc": {capital_per_trade},
+  "confidence": 0.85,
+  "reasoning": "Brief explanation of decision based on indicators and sentiment"
+}}"""
+
+        user_prompt = f"Analyze the current market conditions and make a trading decision for {token_symbol}."
+        
+        # Call LLM
+        model = llm_model or strategy_config.get('llm_provider', settings.OPENROUTER_MODEL)
+        supports_json = _supports_json_mode(model)
+        
+        logger.info(f"[LLM] Using model: {model} (JSON mode: {supports_json})")
+        
+        # Build request payload
+        request_payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            "temperature": 0.3,
+        }
+        
+        # Only add response_format for models that support it
+        if supports_json:
+            request_payload["response_format"] = {"type": "json_object"}
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{settings.OPENROUTER_BASE_URL}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://github.com/ai-trading-agent",
+                    "X-Title": "AI Trading Agent - Strategy Executor"
+                },
+                json=request_payload,
+                timeout=90.0  # Increased timeout for reasoning models
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            # Extract and parse JSON
+            content = data.get("choices", [{}])[0].get("message", {}).get("content", "{}")
+            
+            try:
+                decision_data = json.loads(content)
+            except json.JSONDecodeError:
+                # Try to extract JSON from markdown code blocks or text
+                if "```json" in content:
+                    json_start = content.find("```json") + 7
+                    json_end = content.find("```", json_start)
+                    content = content[json_start:json_end].strip()
+                    decision_data = json.loads(content)
+                elif "```" in content:
+                    json_start = content.find("```") + 3
+                    json_end = content.find("```", json_start)
+                    content = content[json_start:json_end].strip()
+                    decision_data = json.loads(content)
+                else:
+                    # Try to find JSON object in text (for reasoning models)
+                    import re
+                    json_match = re.search(r'\{[^{}]*"action"[^{}]*\}', content, re.DOTALL)
+                    if json_match:
+                        decision_data = json.loads(json_match.group())
+                    else:
+                        raise ValueError("No valid JSON found in response")
+            
+            # Validate decision
+            action = decision_data.get("action", "HOLD").upper()
+            if action not in ["BUY", "SELL", "HOLD", "CLOSE_POSITION"]:
+                action = "HOLD"
+            
+            confidence = float(decision_data.get("confidence", 0.5))
+            confidence = max(0.0, min(1.0, confidence))
+            
+            return {
+                "action": action,
+                "token": decision_data.get("token", token_symbol),
+                "amount_usdc": float(decision_data.get("amount_usdc", capital_per_trade)),
+                "confidence": confidence,
+                "reasoning": decision_data.get("reasoning", "No reasoning provided")
+            }
+            
+    except Exception as e:
+        logger.error(f"Error getting strategy decision: {e}", exc_info=True)
+        return {
+            "action": "HOLD",
+            "token": None,
+            "amount_usdc": 0,
+            "confidence": 0.3,
+            "reasoning": f"Error occurred: {str(e)}"
+        }
 

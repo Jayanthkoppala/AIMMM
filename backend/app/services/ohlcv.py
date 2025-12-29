@@ -164,17 +164,29 @@ class OHLCVService:
     
     async def format_for_llm(
         self,
-        pool_address: str,
+        pool_address: str = None,
+        pool_id: int = None,
         network: str = "movement"
     ) -> str:
         """
         Format OHLCV data as a string for LLM prompt.
+        Reads from database if pool_id is provided, otherwise falls back to CoinGecko API.
+        
+        Args:
+            pool_address: Pool address (for CoinGecko API fallback)
+            pool_id: Pool ID integer (for database query - preferred)
+            network: Network ID
         
         Returns:
             Formatted string with price history and trends
         """
+        # Prefer database if pool_id is provided
+        if pool_id:
+            return await self._format_for_llm_from_db(pool_id)
+        
+        # Fallback to CoinGecko API (legacy behavior)
         if not pool_address:
-            return "No pool address provided for OHLCV data."
+            return "No pool address or pool_id provided for OHLCV data."
         
         # Get price summary (using 1-minute data)
         summary = await self.get_price_summary(pool_address, timeframe='1m', candles_count=100, network=network)
@@ -223,6 +235,108 @@ class OHLCVService:
                 )
         
         return "\n".join(lines)
+    
+    async def _format_for_llm_from_db(self, pool_id: int) -> str:
+        """
+        Format OHLCV data from database as a string for LLM prompt.
+        
+        Args:
+            pool_id: Pool ID integer
+        
+        Returns:
+            Formatted string with price history and trends
+        """
+        if not db_connection.pool:
+            return "Database connection not available for OHLCV data."
+        
+        try:
+            # Get recent candles from database (last 100 candles, 1-minute timeframe)
+            query = """
+                SELECT timestamp, open_price, high_price, low_price, close_price, volume
+                FROM ohlcv_candles
+                WHERE pool_id = %s
+                ORDER BY timestamp DESC
+                LIMIT 100
+            """
+            rows = db_connection.execute_query(query, (pool_id,), fetch_all=True)
+            
+            if not rows or len(rows) < 2:
+                return "Insufficient historical data in database (need at least 2 candles)."
+            
+            # Convert to list of dicts with consistent format
+            candles = []
+            for row in reversed(rows):  # Reverse to get chronological order
+                candles.append({
+                    'timestamp': row.get('timestamp'),
+                    'open': float(row.get('open_price', 0)),
+                    'high': float(row.get('high_price', 0)),
+                    'low': float(row.get('low_price', 0)),
+                    'close': float(row.get('close_price', 0)),
+                    'volume': float(row.get('volume', 0))
+                })
+            
+            if not candles:
+                return "No OHLCV data found in database."
+            
+            # Calculate summary statistics
+            current_price = candles[-1]['close']
+            prices_24h = [c['close'] for c in candles if len(candles) - candles.index(c) <= 1440]  # Last 24h (1440 minutes)
+            high_24h = max(prices_24h) if prices_24h else current_price
+            low_24h = min(prices_24h) if prices_24h else current_price
+            price_change_24h = ((current_price - prices_24h[0]) / prices_24h[0] * 100) if prices_24h and prices_24h[0] > 0 else 0
+            
+            # Calculate volatility (standard deviation of returns)
+            returns = []
+            for i in range(1, len(candles)):
+                if candles[i-1]['close'] > 0:
+                    ret = (candles[i]['close'] - candles[i-1]['close']) / candles[i-1]['close']
+                    returns.append(ret)
+            volatility = (sum((r - sum(returns)/len(returns))**2 for r in returns) / len(returns))**0.5 if returns else 0
+            
+            # Determine trend
+            if len(candles) >= 20:
+                recent_avg = sum(c['close'] for c in candles[-20:]) / 20
+                older_avg = sum(c['close'] for c in candles[-40:-20]) / 20 if len(candles) >= 40 else recent_avg
+                trend = "UPTREND" if recent_avg > older_avg else "DOWNTREND" if recent_avg < older_avg else "SIDEWAYS"
+            else:
+                trend = "INSUFFICIENT_DATA"
+            
+            # Format as readable text
+            lines = [
+                f"Price History Summary (from database):",
+                f"- Current Price: ${current_price:.6f}",
+                f"- 24h Change: {price_change_24h:+.2f}%",
+                f"- 24h High: ${high_24h:.6f}",
+                f"- 24h Low: ${low_24h:.6f}",
+                f"- Trend: {trend}",
+                f"- Volatility: {volatility:.6f}",
+                f"- Data Points: {len(candles)} candles",
+            ]
+            
+            # Add recent candles (last 10)
+            if candles:
+                lines.append("\nRecent Price Action (last 10 candles, 1-minute):")
+                for candle in candles[-10:]:
+                    ts = candle.get('timestamp')
+                    if isinstance(ts, datetime):
+                        time_str = ts.strftime('%H:%M')
+                    elif isinstance(ts, str):
+                        time_str = ts[:5]  # Extract time from ISO string
+                    else:
+                        time_str = "N/A"
+                    
+                    lines.append(
+                        f"  {time_str}: O=${candle['open']:.6f} "
+                        f"H=${candle['high']:.6f} "
+                        f"L=${candle['low']:.6f} "
+                        f"C=${candle['close']:.6f}"
+                    )
+            
+            return "\n".join(lines)
+            
+        except Exception as e:
+            logger.error(f"Error formatting OHLCV from database: {e}", exc_info=True)
+            return f"Error fetching OHLCV data from database: {str(e)}"
     
     async def _store_candles_to_db(
         self,
@@ -318,7 +432,7 @@ class OHLCVService:
         self,
         pool_address: str,
         network: str
-    ) -> Optional[str]:
+    ) -> Optional[int]:
         """
         Get or create a pool entry in the pools table.
         
@@ -327,7 +441,7 @@ class OHLCVService:
             network: Network ID
         
         Returns:
-            Pool UUID as string, or None if error
+            Pool ID as integer, or None if error
         """
         if not db_connection.pool:
             return None
@@ -342,7 +456,7 @@ class OHLCVService:
             result = db_connection.execute_query(query, (pool_address, network), fetch_one=True)
             
             if result and result.get('id'):
-                return str(result['id'])
+                return int(result['id'])
             
             # Create new pool entry
             insert_query = """
@@ -366,7 +480,7 @@ class OHLCVService:
             
             if result and result.get('id'):
                 logger.info(f"Created pool entry for {pool_address[:20]}... on {network}")
-                return str(result['id'])
+                return int(result['id'])
             
             return None
             

@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from app.config import settings
-from app.routers import agent, payment, ohlcv, sentiment, autonomous
+from app.routers import agent, payment, ohlcv, sentiment, autonomous, strategies, pools
 from app.utils.logger import logger
 from app.exceptions import BaseAPIException
 
@@ -92,6 +92,8 @@ app.include_router(payment.router)
 app.include_router(ohlcv.router)
 app.include_router(sentiment.router)
 app.include_router(autonomous.router)
+app.include_router(strategies.router)
+app.include_router(pools.router)
 
 
 @app.get("/health")
@@ -137,13 +139,19 @@ async def root():
 async def startup_event():
     """Start background services on application startup."""
     # Initialize CoinGecko database tables
-    from app.utils.db_init import init_coingecko_tables, reset_sequence
+    from app.utils.db_init import init_coingecko_tables, init_strategy_tables, reset_sequence
     if init_coingecko_tables():
         logger.info("CoinGecko database tables initialized")
         # Ensure ID sequence is correct after initialization
         reset_sequence()
     else:
         logger.error("Failed to initialize CoinGecko database tables")
+    
+    # Initialize strategy builder tables
+    if init_strategy_tables():
+        logger.info("Strategy builder tables initialized")
+    else:
+        logger.error("Failed to initialize strategy builder tables")
     
     # Start OHLCV scheduler if enabled
     if settings.OHLCV_SCHEDULER_ENABLED:
@@ -168,6 +176,11 @@ async def startup_event():
         logger.info("Autonomous trading scheduler started - checking markets every 5 minutes")
     else:
         logger.info("Autonomous trading scheduler disabled")
+    
+    # Start strategy scheduler (always enabled)
+    from app.services.strategy_scheduler import strategy_scheduler
+    strategy_scheduler.start()
+    logger.info("Strategy scheduler started - checking active strategies every minute")
 
 
 @app.on_event("shutdown")
@@ -187,4 +200,9 @@ async def shutdown_event():
         from app.services.autonomous_scheduler import autonomous_scheduler
         autonomous_scheduler.stop()
         logger.info("Autonomous trading scheduler stopped")
+    
+    # Stop strategy scheduler
+    from app.services.strategy_scheduler import strategy_scheduler
+    strategy_scheduler.stop()
+    logger.info("Strategy scheduler stopped")
 

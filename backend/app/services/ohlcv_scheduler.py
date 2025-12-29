@@ -132,7 +132,7 @@ class OHLCVScheduler:
         logger.info(f"Calculated scheduler interval: {interval}s ({interval/60:.1f} min) for {num_pools} pool(s)")
         return interval
     
-    def get_latest_candle_timestamp(self, pool_id: str) -> Optional[int]:
+    def get_latest_candle_timestamp(self, pool_id: int) -> Optional[int]:
         """Get the timestamp of the latest stored candle for a pool."""
         if not db_connection.pool:
             return None
@@ -154,7 +154,7 @@ class OHLCVScheduler:
             logger.error(f"Error getting latest candle timestamp: {e}", exc_info=True)
             return None
     
-    def detect_gap(self, pool_id: str, pool_address: str) -> Optional[Tuple[int, int]]:
+    def detect_gap(self, pool_id: int, pool_address: str) -> Optional[Tuple[int, int]]:
         """
         Detect if there's a gap between latest stored candle and current time.
         
@@ -254,7 +254,9 @@ class OHLCVScheduler:
                 break
             
             try:
-                await self.rate_limiter.wait_if_needed()
+                # Only rate limit if we have many pools
+                if len(self.pools) > 5:
+                    await self.rate_limiter.wait_if_needed()
                 
                 logger.debug(f"Fetching {limit} candles before timestamp {before_timestamp}...")
                 
@@ -311,7 +313,7 @@ class OHLCVScheduler:
         self,
         pool_address: str,
         network: str,
-        pool_id: str,
+        pool_id: int,
         start_ts: int,
         end_ts: int
     ) -> int:
@@ -333,7 +335,9 @@ class OHLCVScheduler:
             
             logger.debug(f"Fetching {limit} candles for pool {pool_address[:20]}... (range: {start_ts} to {end_ts}, span: {time_span}s)")
             
-            await self.rate_limiter.wait_if_needed()
+            # Only rate limit if we have many pools (> 5) to avoid API throttling
+            if len(self.pools) > 5:
+                await self.rate_limiter.wait_if_needed()
             
             # FIX: Don't use before_timestamp for forward gaps - let API return latest data
             candles, meta_info = await get_pool_ohlcv(
@@ -362,26 +366,24 @@ class OHLCVScheduler:
                     meta_info['quote'].get('address', '')
                 )
             
-            # Filter candles to only those in our target range
-            filtered_candles = [
-                c for c in candles 
-                if c.get('timestamp') and start_ts <= c['timestamp'] <= end_ts
-            ]
+            # Store all candles - duplicates handled by ON CONFLICT
+            # Don't filter by range since CoinGecko returns latest candles, not range-specific
+            logger.debug(f"Storing {len(candles)} candles for pool {pool_address[:20]}...")
             
-            if len(filtered_candles) < len(candles):
-                logger.debug(f"Filtered {len(candles)} candles to {len(filtered_candles)} within range")
-            
-            return await self._store_candles(pool_id, pool_address, filtered_candles)
+            return await self._store_candles(pool_id, pool_address, candles)
             
         except Exception as e:
             logger.error(f"Error fetching/storing OHLCV for pool {pool_address[:20]}...: {e}", exc_info=True)
             return 0
     
-    async def _store_candles(self, pool_id: str, pool_address: str, candles: List[Dict]) -> int:
-        """Store candles to database with proper duplicate handling."""
+    async def _store_candles(self, pool_id: int, pool_address: str, candles: List[Dict]) -> int:
+        """Store candles to database with proper duplicate handling and gap filling."""
         stored_count = 0
         skipped_count = 0
         error_count = 0
+        
+        # Fill timestamp gaps before storing
+        candles = self._fill_timestamp_gaps(candles)
         
         # Get pool_name from pools table
         pool_name = None
@@ -426,7 +428,7 @@ class OHLCVScheduler:
                 """
                 
                 params = (
-                    str(pool_id),
+                    pool_id,
                     pool_name,
                     candle_dt,
                     float(candle.get('open', 0)),
@@ -459,7 +461,21 @@ class OHLCVScheduler:
                 logger.error(f"Could not get/create pool for {pool_address[:20]}... - storage aborted")
                 return
             
-            logger.debug(f"Processing pool {pool_address[:20]}... (pool_id: {pool_id[:20]}...)")
+            logger.debug(f"Processing pool {pool_address[:20]}... (pool_id: {pool_id})")
+            
+            # Check if pool needs backfill (insufficient data for technical indicators)
+            MIN_CANDLES_FOR_INDICATORS = 200
+            existing_count = await self._get_candle_count(pool_id)
+            
+            if existing_count < MIN_CANDLES_FOR_INDICATORS:
+                logger.info(f"Pool {pool_address[:20]}... has only {existing_count} candles, needs backfill (min: {MIN_CANDLES_FOR_INDICATORS})")
+                backfilled = await self.backfill_historical_candles(
+                    pool_address=pool_address,
+                    network=network,
+                    num_candles=MIN_CANDLES_FOR_INDICATORS
+                )
+                logger.info(f"Backfilled {backfilled} candles for pool {pool_address[:20]}...")
+                return  # Backfill handles storage, skip gap detection this cycle
             
             # Detect gap
             gap = self.detect_gap(pool_id, pool_address)
@@ -480,7 +496,75 @@ class OHLCVScheduler:
         except Exception as e:
             logger.error(f"Error in fetch_and_store_ohlcv for pool {pool_address[:20]}...: {e}", exc_info=True)
     
-    async def _get_or_create_pool(self, pool_address: str, network: str) -> Optional[str]:
+    async def _get_candle_count(self, pool_id: int) -> int:
+        """Get the count of stored candles for a pool."""
+        if not db_connection.pool:
+            return 0
+        
+        try:
+            query = "SELECT COUNT(*) as count FROM ohlcv_candles WHERE pool_id = %s"
+            result = db_connection.execute_query(query, (pool_id,), fetch_one=True)
+            return result.get('count', 0) if result else 0
+        except Exception as e:
+            logger.error(f"Error getting candle count: {e}")
+            return 0
+    
+    def _fill_timestamp_gaps(self, candles: List[Dict]) -> List[Dict]:
+        """
+        Fill missing 1-minute timestamps between candles.
+        
+        If there's a gap between consecutive candles (e.g., missing minutes),
+        create synthetic candles with the last known close price.
+        
+        Args:
+            candles: List of candle dicts with timestamps
+        
+        Returns:
+            List with gaps filled
+        """
+        if not candles or len(candles) < 2:
+            return candles
+        
+        # Sort by timestamp
+        candles = sorted(candles, key=lambda x: x.get('timestamp', 0))
+        
+        filled_candles = []
+        period_seconds = 60  # 1-minute candles
+        max_gap_to_fill = 60  # Don't fill gaps larger than 60 minutes
+        
+        for i, candle in enumerate(candles):
+            filled_candles.append(candle)
+            
+            if i < len(candles) - 1:
+                current_ts = candle.get('timestamp', 0)
+                next_ts = candles[i + 1].get('timestamp', 0)
+                
+                if isinstance(current_ts, (int, float)) and isinstance(next_ts, (int, float)):
+                    gap_periods = int((next_ts - current_ts) / period_seconds) - 1
+                    
+                    if 0 < gap_periods <= max_gap_to_fill:
+                        last_close = candle.get('close', 0)
+                        if last_close > 0:
+                            # Fill missing periods
+                            for j in range(1, gap_periods + 1):
+                                synthetic_ts = int(current_ts + (j * period_seconds))
+                                synthetic_candle = {
+                                    'timestamp': synthetic_ts,
+                                    'open': last_close,
+                                    'high': last_close,
+                                    'low': last_close,
+                                    'close': last_close,
+                                    'volume': 0.0
+                                }
+                                filled_candles.append(synthetic_candle)
+        
+        gaps_filled = len(filled_candles) - len(candles)
+        if gaps_filled > 0:
+            logger.info(f"Filled {gaps_filled} missing timestamp gaps in candle data")
+        
+        return filled_candles
+    
+    async def _get_or_create_pool(self, pool_address: str, network: str) -> Optional[int]:
         """Get or create a pool entry in the pools table."""
         if not db_connection.pool:
             logger.error("Database connection not available for pool lookup")
@@ -495,7 +579,7 @@ class OHLCVScheduler:
             result = db_connection.execute_query(query, (pool_address, network), fetch_one=True)
             
             if result and result.get('id'):
-                pool_id = str(result['id'])
+                pool_id = int(result['id'])
                 logger.debug(f"Found existing pool_id {pool_id} for {pool_address[:20]}...")
                 return pool_id
             
@@ -515,7 +599,7 @@ class OHLCVScheduler:
             result = db_connection.execute_query(insert_query, params, fetch_one=True)
             
             if result and result.get('id'):
-                pool_id = str(result['id'])
+                pool_id = int(result['id'])
                 logger.info(f"Created pool entry with id {pool_id} for {pool_address[:20]}... on {network}")
                 return pool_id
             
@@ -526,7 +610,7 @@ class OHLCVScheduler:
             logger.error(f"Error getting/creating pool: {e}", exc_info=True)
             return None
     
-    async def _update_pool_tokens(self, pool_id: str, base_symbol: str, quote_symbol: str, base_address: str = None, quote_address: str = None):
+    async def _update_pool_tokens(self, pool_id: int, base_symbol: str, quote_symbol: str, base_address: str = None, quote_address: str = None):
         """Update pool record with base and quote token symbols and addresses."""
         if not base_symbol or not quote_symbol:
             return
@@ -612,7 +696,7 @@ class OHLCVScheduler:
                 )
                 
                 if pool_result and pool_result.get('id'):
-                    pool_id = str(pool_result['id'])
+                    pool_id = int(pool_result['id'])
                     import concurrent.futures
                     loop = asyncio.get_event_loop()
                     with concurrent.futures.ThreadPoolExecutor() as executor:

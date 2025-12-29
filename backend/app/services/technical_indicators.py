@@ -33,12 +33,12 @@ class TechnicalIndicatorsCalculator:
         self.min_candles_required = 200
 
     def fetch_ohlcv_for_pool(
-        self, pool_id: str, limit: Optional[int] = None
+        self, pool_id: int, limit: Optional[int] = None
     ) -> pd.DataFrame:
         """Fetch OHLCV data for a pool from database.
 
         Args:
-            pool_id: Pool UUID as string
+            pool_id: Pool ID as integer
             limit: Number of candles to fetch (None for all candles)
 
         Returns:
@@ -74,7 +74,7 @@ class TechnicalIndicatorsCalculator:
             rows = db_connection.execute_query(query, params, fetch_all=True)
             
             if not rows:
-                logger.debug(f"No OHLCV data found for pool {pool_id[:20]}...")
+                logger.debug(f"No OHLCV data found for pool {pool_id}")
                 return pd.DataFrame()
 
             # Convert to DataFrame
@@ -97,20 +97,20 @@ class TechnicalIndicatorsCalculator:
             
             # FIX: Validate data quality
             if df[['open_price', 'high_price', 'low_price', 'close_price']].isna().any().any():
-                logger.warning(f"Found NaN values in OHLCV data for pool {pool_id[:20]}...")
+                logger.warning(f"Found NaN values in OHLCV data for pool {pool_id}")
                 # Forward fill NaN values
                 df[['open_price', 'high_price', 'low_price', 'close_price', 'volume']] = \
-                    df[['open_price', 'high_price', 'low_price', 'close_price', 'volume']].fillna(method='ffill')
+                    df[['open_price', 'high_price', 'low_price', 'close_price', 'volume']].ffill()
 
             elapsed = time.time() - start_time
-            logger.debug(f"Fetched {len(df)} candles for pool {pool_id[:20]}... in {elapsed:.2f}s")
+            logger.debug(f"Fetched {len(df)} candles for pool {pool_id} in {elapsed:.2f}s")
             return df
 
         except Exception as e:
-            logger.error(f"Error fetching OHLCV data for pool {pool_id[:20]}...: {e}", exc_info=True)
+            logger.error(f"Error fetching OHLCV data for pool {pool_id}: {e}", exc_info=True)
             return pd.DataFrame()
 
-    def calculate_indicators_for_dataframe(self, df: pd.DataFrame, pool_id: str = "") -> pd.DataFrame:
+    def calculate_indicators_for_dataframe(self, df: pd.DataFrame, pool_id: int = 0) -> pd.DataFrame:
         """Calculate all indicators for each row in a DataFrame.
         
         IMPORTANT: Only rows at index >= min_candles_required will have valid indicators.
@@ -129,7 +129,7 @@ class TechnicalIndicatorsCalculator:
             logger.warning(f"Insufficient data for indicator calculation: {len(df)} rows (need {self.min_candles_required})")
             return df
         
-        pool_prefix = f"[Pool {pool_id[:20]}...] " if pool_id else ""
+        pool_prefix = f"[Pool {pool_id}] " if pool_id else ""
         logger.info(f"{pool_prefix}Calculating indicators for {len(df)} candles...")
         
         # Make a copy to avoid modifying original
@@ -146,7 +146,7 @@ class TechnicalIndicatorsCalculator:
         
         # FIX: Replace any remaining NaN/Inf values before calculation
         for col in ['open', 'high', 'low', 'close', 'volume']:
-            result_df[col] = result_df[col].replace([np.inf, -np.inf], np.nan).fillna(method='ffill').fillna(0)
+            result_df[col] = result_df[col].replace([np.inf, -np.inf], np.nan).ffill().fillna(0)
         
         try:
             logger.debug(f"{pool_prefix}→ Volume indicators (10 indicators)...")
@@ -309,11 +309,11 @@ class TechnicalIndicatorsCalculator:
         
         return result_df
 
-    def get_existing_indicators_timestamps(self, pool_id: str) -> Set[int]:
+    def get_existing_indicators_timestamps(self, pool_id: int) -> Set[int]:
         """Get set of timestamps that already have indicators calculated.
 
         Args:
-            pool_id: Pool UUID as string
+            pool_id: Pool ID as integer
 
         Returns:
             Set of timestamp Unix seconds that already have indicators
@@ -336,20 +336,20 @@ class TechnicalIndicatorsCalculator:
             logger.warning(f"Error fetching existing indicators: {e}")
             return set()
 
-    def calculate_and_store_indicators(self, pool_id: str, pool_address: str = "") -> bool:
+    def calculate_and_store_indicators(self, pool_id: int, pool_address: str = "") -> bool:
         """Calculate indicators from ohlcv_candles and store in technical_indicators.
         
         OPTIMIZED: Uses smart chunking with proper overlapping windows for continuous indicator calculation.
 
         Args:
-            pool_id: Pool UUID as string
+            pool_id: Pool ID as integer
             pool_address: Pool address for logging
 
         Returns:
             True if successful
         """
         start_time = time.time()
-        pool_prefix = f"[{pool_address[:20]}...] " if pool_address else f"[Pool {pool_id[:20]}...] "
+        pool_prefix = f"[{pool_address[:20]}...] " if pool_address else f"[Pool {pool_id}] "
         logger.info(f"{pool_prefix}Processing technical indicators...")
         
         try:
@@ -505,13 +505,13 @@ class TechnicalIndicatorsCalculator:
         
         return ranges
 
-    def _store_indicators_batch(self, pool_id: str, df: pd.DataFrame) -> int:
+    def _store_indicators_batch(self, pool_id: int, df: pd.DataFrame) -> int:
         """Store indicators for a batch of candles using batch insertion for performance.
         
         FIX: Better handling of NaN/None values and proper batch execution.
         
         Args:
-            pool_id: Pool UUID as string
+            pool_id: Pool ID as integer
             df: DataFrame with indicators calculated
             
         Returns:
@@ -650,7 +650,8 @@ class TechnicalIndicatorsCalculator:
 
     def format_for_llm(
         self,
-        pool_address: str,
+        pool_address: str = None,
+        pool_id: int = None,
         indicators: Optional[List[str]] = None,
         limit: int = 50
     ) -> Optional[str]:
@@ -658,7 +659,8 @@ class TechnicalIndicatorsCalculator:
         Format latest technical indicators for LLM context.
         
         Args:
-            pool_address: Pool address
+            pool_address: Pool address (for lookup if pool_id not provided)
+            pool_id: Pool ID integer (preferred - avoids lookup)
             indicators: List of indicator names to include (None = all key indicators)
             limit: Number of latest indicator records to include
         
@@ -669,22 +671,26 @@ class TechnicalIndicatorsCalculator:
             return None
         
         try:
-            # Get pool ID
-            pool_query = """
-                SELECT id FROM pools
-                WHERE pool_address = %s AND network = 'movement'
-                LIMIT 1
-            """
-            pool_result = db_connection.execute_query(
-                pool_query,
-                (pool_address,),
-                fetch_one=True
-            )
-            
-            if not pool_result:
-                return None
-            
-            pool_id = pool_result['id']
+            # Get pool ID - prefer direct pool_id, otherwise look up from pool_address
+            if not pool_id:
+                if not pool_address:
+                    return None
+                
+                pool_query = """
+                    SELECT id FROM pools
+                    WHERE pool_address = %s AND network = 'movement'
+                    LIMIT 1
+                """
+                pool_result = db_connection.execute_query(
+                    pool_query,
+                    (pool_address,),
+                    fetch_one=True
+                )
+                
+                if not pool_result:
+                    return None
+                
+                pool_id = pool_result['id']
             
             # Default key indicators if not specified
             if indicators is None:

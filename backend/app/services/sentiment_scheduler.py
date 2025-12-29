@@ -64,7 +64,8 @@ class SentimentScheduler:
         
         try:
             query = """
-                SELECT DISTINCT 
+                SELECT 
+                    id as pool_id,
                     token_a_address, 
                     token_b_address,
                     token_a_symbol,
@@ -83,6 +84,7 @@ class SentimentScheduler:
             pairs = []
             for row in results:
                 pairs.append({
+                    "pool_id": row.get("pool_id"),
                     "token_a_address": row.get("token_a_address"),
                     "token_b_address": row.get("token_b_address"),
                     "token_a_symbol": row.get("token_a_symbol"),
@@ -110,14 +112,15 @@ class SentimentScheduler:
         
         for pair in pairs:
             try:
+                pool_id = pair["pool_id"]
                 token_a_address = pair["token_a_address"]
                 token_b_address = pair["token_b_address"]
                 token_a_symbol = pair.get("token_a_symbol")
                 token_b_symbol = pair.get("token_b_symbol")
                 
                 # Check if we already have recent sentiment (within 24 hours)
-                if self._has_recent_sentiment(token_a_address, token_b_address):
-                    logger.debug(f"Skipping {token_a_symbol or token_a_address[:8]}/{token_b_symbol or token_b_address[:8]} - recent sentiment exists")
+                if self._has_recent_sentiment(pool_id):
+                    logger.debug(f"Skipping pool {pool_id} ({token_a_symbol or token_a_address[:8]}/{token_b_symbol or token_b_address[:8]}) - recent sentiment exists")
                     continue
                 
                 # Prepare tokens for Grok API
@@ -155,6 +158,7 @@ class SentimentScheduler:
                 
                 # Store in database
                 success = self._store_sentiment(
+                    pool_id=pool_id,
                     token_a_address=token_a_address,
                     token_b_address=token_b_address,
                     token_a_symbol=token_a_symbol,
@@ -179,7 +183,7 @@ class SentimentScheduler:
         
         logger.info(f"Sentiment analysis complete: {analyzed} analyzed, {failed} failed")
     
-    def _has_recent_sentiment(self, token_a_address: str, token_b_address: str) -> bool:
+    def _has_recent_sentiment(self, pool_id: int) -> bool:
         """Check if we have sentiment data from the last 24 hours."""
         if not db_connection.pool:
             return False
@@ -188,15 +192,14 @@ class SentimentScheduler:
             query = """
                 SELECT analyzed_at
                 FROM sentiment_analysis
-                WHERE token_a_address = %s
-                AND token_b_address = %s
+                WHERE pool_id = %s
                 AND analyzed_at >= NOW() - INTERVAL '24 hours'
                 ORDER BY analyzed_at DESC
                 LIMIT 1
             """
             result = db_connection.execute_query(
                 query,
-                (token_a_address, token_b_address),
+                (pool_id,),
                 fetch_one=True
             )
             
@@ -208,6 +211,7 @@ class SentimentScheduler:
     
     def _store_sentiment(
         self,
+        pool_id: int,
         token_a_address: str,
         token_b_address: str,
         token_a_symbol: Optional[str],
@@ -222,6 +226,7 @@ class SentimentScheduler:
         try:
             query = """
                 INSERT INTO sentiment_analysis (
+                    pool_id,
                     token_a_address, token_b_address,
                     token_a_symbol, token_b_symbol,
                     token_a_sentiment_score, token_a_sentiment_label, token_a_confidence,
@@ -230,15 +235,16 @@ class SentimentScheduler:
                     token_b_key_factors, token_b_social_volume, token_b_mentions_24h, token_b_dominant_emotion,
                     timeframe, analyzed_at
                 ) VALUES (
-                    %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s,
                     %s, NOW()
                 )
-                ON CONFLICT (token_a_address, token_b_address, analyzed_at) DO NOTHING
+                ON CONFLICT (pool_id, analyzed_at) DO NOTHING
             """
             
             params = (
+                pool_id,
                 token_a_address, token_b_address,
                 token_a_symbol, token_b_symbol,
                 token_a_data.get('sentiment_score', 0.0),

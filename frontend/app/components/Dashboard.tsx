@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { 
   Terminal, 
   Bot, 
@@ -10,16 +10,22 @@ import {
   Activity,
   TrendingUp,
   DollarSign,
-  Clock
+  Clock,
+  Sparkles
 } from "lucide-react";
 import { AgentDashboard } from "./AgentDashboard";
 import { TradeHistory } from "./TradeHistory";
 import { ActivityFeed } from "./ActivityFeed";
 import { MarketOverview } from "./MarketOverview";
+import { StrategyBuilder } from "./StrategyBuilder";
+import { AgentCapabilities } from "./AgentCapabilities";
+import { MyStrategies } from "./MyStrategies";
+import { MarketAnalytics } from "./MarketAnalytics";
 
 const tabs = [
-  { id: "overview", label: "./overview", icon: Terminal },
-  { id: "agent", label: "./agent", icon: Bot },
+  { id: "strategies", label: "./strategies", icon: Sparkles },
+  { id: "my-strategies", label: "./my_strategies", icon: Activity },
+  { id: "agents", label: "./agents", icon: Bot },
   { id: "analytics", label: "./analytics", icon: BarChart3 },
   { id: "history", label: "./history", icon: History },
   { id: "settings", label: "./config", icon: Settings },
@@ -33,7 +39,19 @@ const quickStats = [
 ];
 
 export function Dashboard() {
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useState("strategies");
+
+  // Listen for navigation events from child components
+  useEffect(() => {
+    const handleNavigate = (event: CustomEvent) => {
+      setActiveTab(event.detail);
+    };
+
+    window.addEventListener('navigateToTab', handleNavigate as EventListener);
+    return () => {
+      window.removeEventListener('navigateToTab', handleNavigate as EventListener);
+    };
+  }, []);
 
   return (
     <div className="min-h-screen pt-4 pb-8 scanline">
@@ -88,25 +106,33 @@ export function Dashboard() {
           </div>
         )}
 
-        {activeTab === "agent" && (
-          <div className="max-w-4xl">
-            <AgentDashboard />
+        {activeTab === "agents" && (
+          <div className="max-w-6xl mx-auto">
+            <AgentCapabilities />
+          </div>
+        )}
+
+        {activeTab === "strategies" && (
+          <div className="max-w-6xl">
+            <StrategyBuilder />
+          </div>
+        )}
+
+        {activeTab === "my-strategies" && (
+          <div className="max-w-6xl">
+            <MyStrategies />
+          </div>
+        )}
+
+        {activeTab === "agents" && (
+          <div className="max-w-6xl mx-auto">
+            <AgentCapabilities />
           </div>
         )}
 
         {activeTab === "analytics" && (
-          <div className="p-12 bg-[#0f0f0f] border border-[#1a1a1a] text-center font-mono">
-            <BarChart3 className="h-12 w-12 text-[#006600] mx-auto mb-4" />
-            <h3 className="text-lg font-bold text-[#00ff00] mb-2">{"// ANALYTICS MODULE"}</h3>
-            <p className="text-[#006600] text-sm max-w-md mx-auto">
-              {">"} 70+ technical indicators
-              <br />
-              {">"} Sentiment timeline
-              <br />
-              {">"} Performance metrics
-              <br />
-              <span className="text-[#00aa00]">[STATUS: COMING_SOON]</span>
-            </p>
+          <div className="max-w-6xl">
+            <MarketAnalytics />
           </div>
         )}
 

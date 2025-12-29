@@ -912,3 +912,210 @@ async def get_candles_by_pool(
         from_db=True,
         store=False
     )
+
+
+@router.get("/indicators")
+async def get_indicators(
+    pool_address: str = Query(..., description="Pool address"),
+    network: str = Query("movement", description="Network ID"),
+    limit: int = Query(1, ge=1, le=100, description="Number of latest indicator rows")
+):
+    """
+    Get latest technical indicators for a pool from database.
+    """
+    if not db_connection.pool:
+        raise HTTPException(status_code=503, detail="Database connection not available")
+    
+    try:
+        # Get pool ID
+        pool_query = "SELECT id, pool_name, token_a_symbol, token_b_symbol FROM pools WHERE pool_address = %s AND network = %s"
+        pool_result = db_connection.execute_query(pool_query, (pool_address, network), fetch_one=True)
+        
+        if not pool_result:
+            raise HTTPException(status_code=404, detail="Pool not found")
+        
+        pool_id = pool_result['id']
+        
+        # Get latest indicators
+        indicators_query = """
+            SELECT 
+                timestamp,
+                rsi, macd, macd_signal, macd_diff,
+                sma_20, sma_50, sma_200,
+                ema_12, ema_26, ema_50,
+                bb_hband, bb_lband, bb_mavg, bb_pband, bb_wband,
+                atr, adx,
+                stoch, stoch_signal, williams_r,
+                mfi, obv, vwap, cmf,
+                cci, trix, ao, kama, roc
+            FROM technical_indicators
+            WHERE pool_id = %s
+            ORDER BY timestamp DESC
+            LIMIT %s
+        """
+        rows = db_connection.execute_query(indicators_query, (pool_id, limit), fetch_all=True)
+        
+        if not rows:
+            return {
+                "status": "ok",
+                "data": {
+                    "pool_address": pool_address,
+                    "pool_name": pool_result.get('pool_name'),
+                    "indicators": [],
+                    "count": 0
+                }
+            }
+        
+        # Format indicators
+        indicators = []
+        for row in rows:
+            indicator = {
+                "timestamp": int(row['timestamp'].timestamp()) if hasattr(row['timestamp'], 'timestamp') else row['timestamp'],
+                "momentum": {
+                    "rsi": float(row['rsi']) if row.get('rsi') is not None else None,
+                    "stoch": float(row['stoch']) if row.get('stoch') is not None else None,
+                    "stoch_signal": float(row['stoch_signal']) if row.get('stoch_signal') is not None else None,
+                    "williams_r": float(row['williams_r']) if row.get('williams_r') is not None else None,
+                    "mfi": float(row['mfi']) if row.get('mfi') is not None else None,
+                    "cci": float(row['cci']) if row.get('cci') is not None else None,
+                    "ao": float(row['ao']) if row.get('ao') is not None else None,
+                    "kama": float(row['kama']) if row.get('kama') is not None else None,
+                    "roc": float(row['roc']) if row.get('roc') is not None else None
+                },
+                "trend": {
+                    "macd": float(row['macd']) if row.get('macd') is not None else None,
+                    "macd_signal": float(row['macd_signal']) if row.get('macd_signal') is not None else None,
+                    "macd_diff": float(row['macd_diff']) if row.get('macd_diff') is not None else None,
+                    "sma_20": float(row['sma_20']) if row.get('sma_20') is not None else None,
+                    "sma_50": float(row['sma_50']) if row.get('sma_50') is not None else None,
+                    "sma_200": float(row['sma_200']) if row.get('sma_200') is not None else None,
+                    "ema_12": float(row['ema_12']) if row.get('ema_12') is not None else None,
+                    "ema_26": float(row['ema_26']) if row.get('ema_26') is not None else None,
+                    "ema_50": float(row['ema_50']) if row.get('ema_50') is not None else None,
+                    "adx": float(row['adx']) if row.get('adx') is not None else None,
+                    "trix": float(row['trix']) if row.get('trix') is not None else None
+                },
+                "volatility": {
+                    "bb_hband": float(row['bb_hband']) if row.get('bb_hband') is not None else None,
+                    "bb_lband": float(row['bb_lband']) if row.get('bb_lband') is not None else None,
+                    "bb_mavg": float(row['bb_mavg']) if row.get('bb_mavg') is not None else None,
+                    "bb_pband": float(row['bb_pband']) if row.get('bb_pband') is not None else None,
+                    "bb_wband": float(row['bb_wband']) if row.get('bb_wband') is not None else None,
+                    "atr": float(row['atr']) if row.get('atr') is not None else None
+                },
+                "volume": {
+                    "obv": float(row['obv']) if row.get('obv') is not None else None,
+                    "vwap": float(row['vwap']) if row.get('vwap') is not None else None,
+                    "cmf": float(row['cmf']) if row.get('cmf') is not None else None
+                }
+            }
+            indicators.append(indicator)
+        
+        return {
+            "status": "ok",
+            "data": {
+                "pool_address": pool_address,
+                "pool_name": pool_result.get('pool_name'),
+                "pair": f"{pool_result.get('token_a_symbol', '?')}/{pool_result.get('token_b_symbol', '?')}",
+                "indicators": indicators,
+                "count": len(indicators)
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching indicators: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch indicators: {str(e)}")
+
+
+@router.get("/sentiment")
+async def get_sentiment_from_db(
+    pool_address: str = Query(..., description="Pool address"),
+    network: str = Query("movement", description="Network ID")
+):
+    """
+    Get latest sentiment analysis for a pool from database.
+    """
+    if not db_connection.pool:
+        raise HTTPException(status_code=503, detail="Database connection not available")
+    
+    try:
+        # Get pool info including pool_id
+        pool_query = "SELECT id, token_a_symbol, token_b_symbol FROM pools WHERE pool_address = %s AND network = %s"
+        pool_result = db_connection.execute_query(pool_query, (pool_address, network), fetch_one=True)
+        
+        if not pool_result:
+            raise HTTPException(status_code=404, detail="Pool not found")
+        
+        pool_id = pool_result.get('id')
+        
+        # Get latest sentiment by pool_id
+        sentiment_query = """
+            SELECT 
+                token_a_symbol, token_a_sentiment_score, token_a_sentiment_label, 
+                token_a_confidence, token_a_key_factors, token_a_dominant_emotion,
+                token_a_social_volume, token_a_mentions_24h,
+                token_b_symbol, token_b_sentiment_score, token_b_sentiment_label,
+                token_b_confidence, token_b_key_factors, token_b_dominant_emotion,
+                token_b_social_volume, token_b_mentions_24h,
+                timeframe, analyzed_at
+            FROM sentiment_analysis
+            WHERE pool_id = %s
+            ORDER BY analyzed_at DESC
+            LIMIT 1
+        """
+        sentiment_result = db_connection.execute_query(
+            sentiment_query, 
+            (pool_id,), 
+            fetch_one=True
+        )
+        
+        if not sentiment_result:
+            return {
+                "status": "ok",
+                "data": {
+                    "pool_address": pool_address,
+                    "pool_id": pool_id,
+                    "sentiment": None,
+                    "message": "No sentiment data available yet"
+                }
+            }
+        
+        return {
+            "status": "ok",
+            "data": {
+                "pool_address": pool_address,
+                "pool_id": pool_id,
+                "sentiment": {
+                    "token_a": {
+                        "symbol": sentiment_result.get('token_a_symbol') or pool_result.get('token_a_symbol'),
+                        "score": float(sentiment_result['token_a_sentiment_score']),
+                        "label": sentiment_result.get('token_a_sentiment_label'),
+                        "confidence": float(sentiment_result['token_a_confidence']),
+                        "key_factors": sentiment_result.get('token_a_key_factors', []),
+                        "dominant_emotion": sentiment_result.get('token_a_dominant_emotion'),
+                        "social_volume": sentiment_result.get('token_a_social_volume', 0),
+                        "mentions_24h": sentiment_result.get('token_a_mentions_24h', 0)
+                    },
+                    "token_b": {
+                        "symbol": sentiment_result.get('token_b_symbol') or pool_result.get('token_b_symbol'),
+                        "score": float(sentiment_result['token_b_sentiment_score']),
+                        "label": sentiment_result.get('token_b_sentiment_label'),
+                        "confidence": float(sentiment_result['token_b_confidence']),
+                        "key_factors": sentiment_result.get('token_b_key_factors', []),
+                        "dominant_emotion": sentiment_result.get('token_b_dominant_emotion'),
+                        "social_volume": sentiment_result.get('token_b_social_volume', 0),
+                        "mentions_24h": sentiment_result.get('token_b_mentions_24h', 0)
+                    },
+                    "timeframe": sentiment_result.get('timeframe'),
+                    "analyzed_at": sentiment_result['analyzed_at'].isoformat() if sentiment_result.get('analyzed_at') else None
+                }
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching sentiment: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch sentiment: {str(e)}")
