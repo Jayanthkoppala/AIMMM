@@ -10,16 +10,32 @@ interface WalletProviderProps {
 }
 
 export function WalletProvider({ children }: WalletProviderProps) {
-  // Movement Mainnet configuration
-  // Transactions will use their own config based on the connected network
+  const privyAppId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
+  
   const aptosConfig = new AptosConfig({
     network: Network.MAINNET,
     fullnode: "https://full.mainnet.movementinfra.xyz/v1",
   });
+
+  const aptosWrapper = (
+    <AptosWalletAdapterProvider
+      autoConnect={false}
+      dappConfig={aptosConfig}
+      onError={(error) => {
+        console.error("Wallet error:", JSON.stringify(error, null, 2));
+      }}
+    >
+      {children}
+    </AptosWalletAdapterProvider>
+  );
+
+  if (!privyAppId) {
+    return aptosWrapper;
+  }
   
   return (
     <PrivyProvider
-      appId={process.env.NEXT_PUBLIC_PRIVY_APP_ID || ""}
+      appId={privyAppId}
       config={{
         loginMethods: ["email", "google", "twitter", "github"],
         appearance: {
@@ -28,15 +44,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
         },
       }}
     >
-      <AptosWalletAdapterProvider
-        autoConnect={false}
-        dappConfig={aptosConfig}
-        onError={(error) => {
-          console.error("Wallet error:", JSON.stringify(error, null, 2));
-        }}
-      >
-        {children}
-      </AptosWalletAdapterProvider>
+      {aptosWrapper}
     </PrivyProvider>
   );
 }
