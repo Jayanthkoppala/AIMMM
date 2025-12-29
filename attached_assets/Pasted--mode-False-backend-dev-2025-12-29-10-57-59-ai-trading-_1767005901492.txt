@@ -1,0 +1,84 @@
+ mode: False)
+backend dev: 2025-12-29 10:57:59 - ai_trading_agent - ERROR - Error getting strategy decision: Illegal header value b'Bearer '
+backend dev: Traceback (most recent call last):
+backend dev:   File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/httpcore/_exceptions.py", line 10, in map_exceptions
+backend dev:     yield
+backend dev:   File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/httpcore/_async/http11.py", line 130, in _send_request_headers
+backend dev:     event = h11.Request(
+backend dev:             ^^^^^^^^^^^^
+backend dev:   File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/h11/_events.py", line 96, in __init__
+backend dev:     self, "headers", normalize_and_validate(headers, _parsed=_parsed)
+backend dev:                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend dev:   File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/h11/_headers.py", line 164, in normalize_and_validate
+backend dev:     validate(_field_value_re, value, "Illegal header value {!r}", value)
+backend dev:   File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/h11/_util.py", line 91, in validate
+backend dev:     raise LocalProtocolError(msg)
+backend dev: h11._util.LocalProtocolError: Illegal header value b'Bearer '
+backend dev: The above exception was the direct cause of the following exception:
+backend dev: Traceback (most recent call last):
+backend dev:   File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/httpx/_transports/default.py", line 60, in map_httpcore_exceptions
+backend dev:     yield
+backend dev:   File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/httpx/_transports/default.py", line 353, in handle_async_request
+backend dev:     resp = await self._pool.handle_async_request(req)
+backend dev:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend dev:   File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/httpcore/_async/connection_pool.py", line 262, in handle_async_request
+backend dev:     raise exc
+backend dev:   File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/httpcore/_async/connection_pool.py", line 245, in handle_async_request
+backend dev:     response = await connection.handle_async_request(request)
+backend dev:                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend dev:   File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/httpcore/_async/connection.py", line 96, in handle_async_request
+backend dev:     return await self._connection.handle_async_request(request)
+backend dev:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend dev:   File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/httpcore/_async/http11.py", line 121, in handle_async_request
+backend dev:     raise exc
+backend dev:   File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/httpcore/_async/http11.py", line 88, in handle_async_request
+backend dev:     await self._send_request_headers(**kwargs)
+backend dev:   File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/httpcore/_async/http11.py", line 129, in _send_request_headers
+backend dev:     with map_exceptions({h11.LocalProtocolError: LocalProtocolError}):
+backend dev:   File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/contextlib.py", line 158, in __exit__
+backend dev:     self.gen.throw(typ, value, traceback)
+backend dev:   File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/httpcore/_exceptions.py", line 14, in map_exceptions
+backend dev:     raise to_exc(exc) from exc
+backend dev: httpcore.LocalProtocolError: Illegal header value b'Bearer '
+backend dev: The above exception was the direct cause of the following exception:
+backend dev: Traceback (most recent call last):
+backend dev:   File "/home/runner/workspace/backend/app/services/llm.py", line 331, in get_strategy_decision
+backend dev:     response = await client.post(
+backend dev:                ^^^^^^^^^^^^^^^^^^
+backend dev:   File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/httpx/_client.py", line 1848, in post
+backend dev:     return await self.request(
+backend dev:            ^^^^^^^^^^^^^^^^^^^
+backend dev:   File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/httpx/_client.py", line 1530, in request
+backend dev:     return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+backend dev:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend dev:   File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/httpx/_client.py", line 1617, in send
+backend dev:     response = await self._send_handling_auth(
+backend dev:                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend dev:   File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/httpx/_client.py", line 1645, in _send_handling_auth
+backend dev:     response = await self._send_handling_redirects(
+backend dev:                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend dev:   File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/httpx/_client.py", line 1682, in _send_handling_redirects
+backend dev:     response = await self._send_single_request(request)
+backend dev:                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend dev:   File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/httpx/_client.py", line 1719, in _send_single_request
+backend dev:     response = await transport.handle_async_request(request)
+backend dev:                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend dev:   File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/httpx/_transports/default.py", line 352, in handle_async_request
+backend dev:     with map_httpcore_exceptions():
+backend dev:   File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/contextlib.py", line 158, in __exit__
+backend dev:     self.gen.throw(typ, value, traceback)
+backend dev:   File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/httpx/_transports/default.py", line 77, in map_httpcore_exceptions
+backend dev:     raise mapped_exc(message) from exc
+backend dev: httpx.LocalProtocolError: Illegal header value b'Bearer '
+backend dev: 2025-12-29 10:57:59 - ai_trading_agent - INFO - [Strategy Execution] LLM decision received: action=HOLD, confidence=0.30
+backend dev: 2025-12-29 10:57:59 - ai_trading_agent - INFO - [Strategy Execution] Dynamic risk params: SL=15.0%, TP=10.0%
+frontend dev:  HEAD / 200 in 66ms
+frontend dev:  HEAD / 200 in 49ms
+backend dev: 2025-12-29 10:58:01 - ai_trading_agent - INFO - [Paper Trading] Portfolio value calculated: $1000.82 (Initial: $1000.00, Realized P&L: $-0.32, Unrealized P&L: $1.10, Total P&L: $0.82 (+0.08%))
+backend dev: 2025-12-29 10:58:01 - ai_trading_agent - INFO - ================================================================================
+backend dev: 2025-12-29 10:58:01 - ai_trading_agent - INFO - [Strategy Execution] Execution completed in 9.39s
+backend dev: 2025-12-29 10:58:01 - ai_trading_agent - INFO - [Strategy Execution] Final decision: HOLD (confidence: 0.30)
+backend dev: 2025-12-29 10:58:01 - ai_trading_agent - INFO - [Strategy Execution] Trade executed: NO
+backend dev: 2025-12-29 10:58:01 - ai_trading_agent - INFO - [Strategy Execution] Portfolio value: $1000.82 (P&L: +0.08%)
+backend dev: 2025-12-29 10:58:01 - ai_trading_agent - INFO - ================================================================================
+backend dev: 2025-12-29 10:58:01 - ai_trading_agent - INFO - Strategy 'weth' executed: action=HOLD, confidence=0.30, trade_executed=False

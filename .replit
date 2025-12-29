@@ -48,3 +48,4 @@ build = ["pnpm", "--filter", "frontend", "build"]
 [userenv.shared]
 NEXT_PUBLIC_PRIVY_APP_ID = "cmjeh1f4z02eajs0cq5ok6k35"
 AUTONOMOUS_WALLET_ENCRYPTION_KEY = "j0XqrdXyT7L4iIrrsCS-boxwq8dCWj_HtG1kqz53H1w="
+API_BASE_URL = "http://localhost:8000"
