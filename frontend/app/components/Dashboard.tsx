@@ -9,10 +9,8 @@ import {
   Settings,
   Activity,
   TrendingUp,
-  TrendingDown,
   DollarSign,
-  Clock,
-  Zap
+  Clock
 } from "lucide-react";
 import { AgentDashboard } from "./AgentDashboard";
 import { TradeHistory } from "./TradeHistory";
@@ -28,10 +26,10 @@ const tabs = [
 ];
 
 const quickStats = [
-  { label: "Today's Trades", value: "12", change: "+3", icon: Activity, iconClass: "text-cyber-indigo" },
-  { label: "Win Rate", value: "83%", change: "+5%", icon: TrendingUp, iconClass: "text-cyber-green" },
-  { label: "Total P&L", value: "+$243", change: "", icon: DollarSign, iconClass: "text-cyber-green" },
-  { label: "Active Since", value: "2h 34m", change: "", icon: Clock, iconClass: "text-cyber-purple" },
+  { label: "Today's Trades", value: "12", change: "+3", positive: true, icon: Activity },
+  { label: "Win Rate", value: "83%", change: "+5%", positive: true, icon: TrendingUp },
+  { label: "Total P&L", value: "+$243", change: "", positive: true, icon: DollarSign },
+  { label: "Active Since", value: "2h 34m", change: "", positive: true, icon: Clock },
 ];
 
 export function Dashboard() {
@@ -41,15 +39,15 @@ export function Dashboard() {
     <div className="min-h-screen pt-4 pb-8">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <div className="mb-8">
-          <div className="glass-card rounded-xl p-1 inline-flex">
+          <div className="inline-flex bg-[#111317] border border-[#1F1F24] rounded-lg p-1">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
                   activeTab === tab.id
-                    ? "bg-cyber-indigo text-white shadow-glow"
-                    : "text-gray-400 hover:text-white hover:bg-cyber-card/50"
+                    ? "bg-emerald text-white"
+                    : "text-gray-400 hover:text-white"
                 }`}
               >
                 <tab.icon className="h-4 w-4" />
@@ -63,15 +61,15 @@ export function Dashboard() {
           <div className="space-y-6">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {quickStats.map((stat) => (
-                <div key={stat.label} className="stat-card">
-                  <div className="flex items-center justify-between mb-2">
+                <div key={stat.label} className="p-5 rounded-xl bg-[#111317] border border-[#1F1F24]">
+                  <div className="flex items-center justify-between mb-3">
                     <span className="text-sm text-gray-400">{stat.label}</span>
-                    <stat.icon className={`h-4 w-4 ${stat.iconClass}`} />
+                    <stat.icon className="h-4 w-4 text-gray-500" />
                   </div>
                   <div className="flex items-end gap-2">
-                    <span className="text-2xl font-bold text-white">{stat.value}</span>
+                    <span className="text-2xl font-semibold text-white">{stat.value}</span>
                     {stat.change && (
-                      <span className="text-sm text-cyber-green mb-1">{stat.change}</span>
+                      <span className="text-sm text-emerald mb-0.5">{stat.change}</span>
                     )}
                   </div>
                 </div>
@@ -97,11 +95,11 @@ export function Dashboard() {
         )}
 
         {activeTab === "analytics" && (
-          <div className="glass-card rounded-2xl p-8 text-center">
-            <BarChart3 className="h-16 w-16 text-cyber-indigo mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-white mb-2">Analytics Coming Soon</h3>
-            <p className="text-gray-400">
-              Advanced charts with 70+ technical indicators, sentiment timeline, and more.
+          <div className="p-12 rounded-xl bg-[#111317] border border-[#1F1F24] text-center">
+            <BarChart3 className="h-12 w-12 text-gray-500 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-white mb-2">Analytics Coming Soon</h3>
+            <p className="text-gray-400 text-sm max-w-md mx-auto">
+              Advanced charts with 70+ technical indicators, sentiment timeline, and performance metrics.
             </p>
           </div>
         )}
@@ -111,11 +109,11 @@ export function Dashboard() {
         )}
 
         {activeTab === "settings" && (
-          <div className="glass-card rounded-2xl p-8 text-center">
-            <Settings className="h-16 w-16 text-cyber-indigo mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-white mb-2">Settings Coming Soon</h3>
-            <p className="text-gray-400">
-              Configure trading modes, risk management, and pool settings.
+          <div className="p-12 rounded-xl bg-[#111317] border border-[#1F1F24] text-center">
+            <Settings className="h-12 w-12 text-gray-500 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-white mb-2">Settings Coming Soon</h3>
+            <p className="text-gray-400 text-sm max-w-md mx-auto">
+              Configure trading modes, risk management, notifications, and pool settings.
             </p>
           </div>
         )}
