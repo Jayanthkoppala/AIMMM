@@ -61,3 +61,10 @@ cd backend && uvicorn app.main:app --reload --host localhost --port 8000
   - Code execution simulation on landing page
   - Log-style activity feed formatting
 - Fixed login redirect to check both Privy authentication and wallet connection
+- **MyStrategies Page Redesign** (Dec 2024):
+  - Strategy Dock at TOP: Strategy tabs, selected strategy info (name, description, model, interval, mode), Start/Pause button
+  - 2/3 - 1/3 Layout: Execution Terminal (left) + Trading Metrics (right)
+  - Execution logs as PRIMARY focus with lazy loading (10 logs at a time, loads more on scroll)
+  - Filter buttons: [ALL] [BUYS] [SELLS] [HOLDS]
+  - Trading metrics panel: Portfolio value, P&L, ROI, Statistics (win rate, Sharpe, drawdown), Active positions
+  - Removed Execute button - only Start/Pause remains
