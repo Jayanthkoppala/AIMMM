@@ -68,3 +68,12 @@ cd backend && uvicorn app.main:app --reload --host localhost --port 8000
   - Filter buttons: [ALL] [BUYS] [SELLS] [HOLDS]
   - Trading metrics panel: Portfolio value, P&L, ROI, Statistics (win rate, Sharpe, drawdown), Active positions
   - Removed Execute button - only Start/Pause remains
+- **Agents Tab Redesign** (Dec 2024):
+  - System header with "AGENT_NETWORK_v2.1.0" branding and live status indicator
+  - Interactive data pipeline visualization showing 6 agents as connected nodes
+  - Animated data flow with pulsing effects between agents (OHLCV -> TECH -> SENT -> RISK -> LLM -> EXEC)
+  - Expandable agent cards with status indicators (active/processing/idle)
+  - Metrics display: uptime, latency, requests per minute for each agent
+  - IN/OUT data type badges showing data flow (e.g., "Candle[] -> Indicators{}")
+  - Terminal-style system console with ASCII box art configuration display
+  - Quick stats footer: 85+ indicators, 2.5k+ candles, <2s decision time, 99.9% uptime
