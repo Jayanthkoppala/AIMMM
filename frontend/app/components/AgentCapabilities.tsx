@@ -277,30 +277,20 @@ export function AgentCapabilities() {
         </div>
       </div>
 
-      {/* Agent Details Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        {agents.map((agent, idx) => (
-          <div
-            key={agent.id}
-            className={`border transition-all duration-300 cursor-pointer ${
-              expandedAgent === agent.id 
-                ? "border-[#00ff00] bg-[#0a0a0a]" 
-                : "border-[#1a1a1a] bg-black hover:border-[#00ff00]/30"
-            }`}
-            onClick={() => setExpandedAgent(expandedAgent === agent.id ? null : agent.id)}
-          >
-            {/* Agent Header */}
-            <div className="p-4">
+      {/* Expanded Agent Details (shown when clicking pipeline node) */}
+      {expandedAgent && (
+        <div className="border border-[#00ff00] bg-[#0a0a0a] p-4">
+          {agents.filter(a => a.id === expandedAgent).map(agent => (
+            <div key={agent.id} className="space-y-4">
+              {/* Agent Header */}
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
-                  <div className={`p-2 border ${
-                    expandedAgent === agent.id ? "border-[#00ff00] bg-[#00ff00]/10" : "border-[#1a1a1a]"
-                  }`}>
-                    <agent.icon className={`h-5 w-5 ${getStatusColor(agent.status)}`} />
+                  <div className="p-2 border border-[#00ff00] bg-[#00ff00]/10">
+                    <agent.icon className="h-6 w-6 text-[#00ff00]" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <h3 className="text-sm font-bold font-mono text-[#00ff00]">
+                      <h3 className="text-lg font-bold font-mono text-[#00ff00]">
                         {agent.name}
                       </h3>
                       <span className={`text-[9px] font-mono px-1.5 py-0.5 border ${
@@ -311,72 +301,66 @@ export function AgentCapabilities() {
                         {agent.status.toUpperCase()}
                       </span>
                     </div>
-                    <p className="text-[10px] text-[#006600] font-mono mt-0.5">
+                    <p className="text-xs text-[#006600] font-mono mt-1">
                       {agent.description}
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-1 text-[#006600]">
-                  {expandedAgent === agent.id ? (
-                    <ChevronDown className="h-4 w-4" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4" />
-                  )}
-                </div>
+                <button 
+                  onClick={() => setExpandedAgent(null)}
+                  className="text-[#006600] hover:text-[#00ff00] font-mono text-xs"
+                >
+                  [CLOSE]
+                </button>
               </div>
 
               {/* Data Flow Info */}
-              <div className="flex items-center gap-2 mt-3 text-[10px] font-mono">
+              <div className="flex items-center gap-2 text-xs font-mono">
                 <span className="text-[#666666]">IN:</span>
-                <span className="text-[#00ff00]/70 px-1.5 py-0.5 bg-[#00ff00]/5 border border-[#1a1a1a]">
+                <span className="text-[#00ff00]/70 px-2 py-1 bg-[#00ff00]/5 border border-[#1a1a1a]">
                   {agent.dataType}
                 </span>
-                <ArrowRight className="h-3 w-3 text-[#006600]" />
+                <ArrowRight className="h-4 w-4 text-[#006600]" />
                 <span className="text-[#666666]">OUT:</span>
-                <span className="text-[#00ff00]/70 px-1.5 py-0.5 bg-[#00ff00]/5 border border-[#1a1a1a]">
+                <span className="text-[#00ff00]/70 px-2 py-1 bg-[#00ff00]/5 border border-[#1a1a1a]">
                   {agent.outputType}
                 </span>
               </div>
-            </div>
 
-            {/* Expanded Content */}
-            {expandedAgent === agent.id && (
-              <div className="border-t border-[#1a1a1a] p-4 space-y-4">
-                {/* Metrics */}
-                <div className="flex gap-4">
-                  <div className="flex-1 p-2 bg-black border border-[#1a1a1a]">
-                    <div className="text-[9px] text-[#666666] font-mono">UPTIME</div>
-                    <div className="text-sm text-[#00ff00] font-mono font-bold">{agent.metrics.uptime}</div>
-                  </div>
-                  <div className="flex-1 p-2 bg-black border border-[#1a1a1a]">
-                    <div className="text-[9px] text-[#666666] font-mono">LATENCY</div>
-                    <div className="text-sm text-[#00ff00] font-mono font-bold">{agent.metrics.latency}</div>
-                  </div>
-                  <div className="flex-1 p-2 bg-black border border-[#1a1a1a]">
-                    <div className="text-[9px] text-[#666666] font-mono">REQUESTS</div>
-                    <div className="text-sm text-[#00ff00] font-mono font-bold">{agent.metrics.requests}</div>
-                  </div>
+              {/* Metrics */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="p-3 bg-black border border-[#1a1a1a]">
+                  <div className="text-[9px] text-[#666666] font-mono">UPTIME</div>
+                  <div className="text-xl text-[#00ff00] font-mono font-bold">{agent.metrics.uptime}</div>
                 </div>
-
-                {/* Features */}
-                <div>
-                  <div className="text-[10px] text-[#666666] font-mono mb-2">CAPABILITIES</div>
-                  <div className="space-y-1.5">
-                    {agent.features.map((feature, featIdx) => (
-                      <div key={featIdx} className="flex items-start gap-2">
-                        <span className="text-[#00ff00] text-[10px] font-mono">$</span>
-                        <span className="text-[11px] text-[#006600] font-mono leading-relaxed">
-                          {feature}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                <div className="p-3 bg-black border border-[#1a1a1a]">
+                  <div className="text-[9px] text-[#666666] font-mono">LATENCY</div>
+                  <div className="text-xl text-[#00ff00] font-mono font-bold">{agent.metrics.latency}</div>
+                </div>
+                <div className="p-3 bg-black border border-[#1a1a1a]">
+                  <div className="text-[9px] text-[#666666] font-mono">REQUESTS</div>
+                  <div className="text-xl text-[#00ff00] font-mono font-bold">{agent.metrics.requests}</div>
                 </div>
               </div>
-            )}
-          </div>
-        ))}
-      </div>
+
+              {/* Features */}
+              <div>
+                <div className="text-xs text-[#666666] font-mono mb-2">CAPABILITIES</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {agent.features.map((feature, featIdx) => (
+                    <div key={featIdx} className="flex items-start gap-2">
+                      <span className="text-[#00ff00] text-xs font-mono">$</span>
+                      <span className="text-xs text-[#006600] font-mono leading-relaxed">
+                        {feature}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* System Console */}
       <div className="border border-[#1a1a1a] bg-black">
