@@ -3,8 +3,7 @@
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { usePrivyWallet } from "@/app/hooks/use-privy-wallet";
 import { Button } from "./ui/button";
-import { WalletSelectionModal } from "./wallet-selection-modal";
-import { Wallet, LogOut, Copy, Check, ExternalLink, User, Zap } from "lucide-react";
+import { LogOut, Copy, Check, ExternalLink, User, Zap, Wallet } from "lucide-react";
 import { useState, useEffect } from "react";
 import {
   DropdownMenu,
@@ -144,7 +143,7 @@ export function Header() {
             </Button>
           )}
 
-          {connected ? (
+          {connected && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button className="gap-2 h-9 px-4 bg-emerald hover:bg-emerald-dark text-white border-0">
@@ -212,13 +211,6 @@ export function Header() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-          ) : (
-            <WalletSelectionModal>
-              <Button className="gap-2 bg-emerald hover:bg-emerald-dark text-white border-0 px-4">
-                <Wallet className="h-4 w-4" />
-                <span className="hidden sm:inline">Connect Wallet</span>
-              </Button>
-            </WalletSelectionModal>
           )}
         </div>
       </div>

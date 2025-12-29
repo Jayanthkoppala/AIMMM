@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "./ui/button";
-import { WalletSelectionModal } from "./wallet-selection-modal";
+import { usePrivyWallet } from "@/app/hooks/use-privy-wallet";
 import { 
   Wallet, 
   Brain, 
@@ -54,6 +54,8 @@ const stats = [
 ];
 
 export function LandingPage() {
+  const { login } = usePrivyWallet();
+
   return (
     <div className="min-h-screen">
       <section className="relative pt-24 pb-20">
@@ -73,15 +75,14 @@ export function LandingPage() {
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <WalletSelectionModal>
-                <Button 
-                  size="lg" 
-                  className="bg-emerald hover:bg-emerald-dark text-white px-8 py-6 text-base font-medium border-0 w-full sm:w-auto"
-                >
-                  <Wallet className="h-5 w-5 mr-2" />
-                  Connect Wallet
-                </Button>
-              </WalletSelectionModal>
+              <Button 
+                size="lg" 
+                className="bg-emerald hover:bg-emerald-dark text-white px-8 py-6 text-base font-medium border-0 w-full sm:w-auto"
+                onClick={login}
+              >
+                <Wallet className="h-5 w-5 mr-2" />
+                Get Started
+              </Button>
               <Button 
                 variant="outline"
                 size="lg"
@@ -154,18 +155,17 @@ export function LandingPage() {
                 Ready to start trading?
               </h3>
               <p className="text-gray-400">
-                Connect your wallet and let AI handle the rest
+                Sign in and let AI handle the rest
               </p>
             </div>
-            <WalletSelectionModal>
-              <Button 
-                size="lg" 
-                className="bg-emerald hover:bg-emerald-dark text-white px-8 border-0 whitespace-nowrap"
-              >
-                Get Started
-                <ArrowRight className="h-4 w-4 ml-2" />
-              </Button>
-            </WalletSelectionModal>
+            <Button 
+              size="lg" 
+              className="bg-emerald hover:bg-emerald-dark text-white px-8 border-0 whitespace-nowrap"
+              onClick={login}
+            >
+              Get Started
+              <ArrowRight className="h-4 w-4 ml-2" />
+            </Button>
           </div>
         </div>
       </section>
