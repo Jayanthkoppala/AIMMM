@@ -38,3 +38,8 @@ externalPort = 80
 deploymentTarget = "autoscale"
 run = ["pnpm", "--filter", "frontend", "start", "-H", "0.0.0.0", "-p", "5000"]
 build = ["pnpm", "--filter", "frontend", "build"]
+
+[userenv]
+
+[userenv.shared]
+NEXT_PUBLIC_PRIVY_APP_ID = "cmjeh1f4z02eajs0cq5ok6k35"
