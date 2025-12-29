@@ -1,6 +1,7 @@
 "use client";
 
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
+import { usePrivyWallet } from "./hooks/use-privy-wallet";
 import { Header } from "./components/Header";
 import { LandingPage } from "./components/LandingPage";
 import { Dashboard } from "./components/Dashboard";
@@ -9,17 +10,20 @@ import { useState, useEffect } from "react";
 
 export default function Home() {
   const { connected } = useWallet();
-  const [isReady, setIsReady] = useState(false);
+  const { authenticated } = usePrivyWallet();
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setIsReady(true);
+    setMounted(true);
   }, []);
 
-  if (!isReady) {
+  const isLoggedIn = connected || authenticated;
+
+  if (!mounted) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-cyber-bg">
+      <div className="min-h-screen flex items-center justify-center bg-[#060608]">
         <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-8 w-8 animate-spin text-cyber-indigo" />
+          <Loader2 className="h-8 w-8 animate-spin text-emerald" />
           <div className="text-lg font-medium text-white">Loading...</div>
         </div>
       </div>
@@ -29,7 +33,7 @@ export default function Home() {
   return (
     <div className="min-h-screen">
       <Header />
-      {connected ? <Dashboard /> : <LandingPage />}
+      {isLoggedIn ? <Dashboard /> : <LandingPage />}
     </div>
   );
 }
