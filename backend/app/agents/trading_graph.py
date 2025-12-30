@@ -16,22 +16,22 @@ from app.agents.execution_agent import execution_agent
 from app.utils.logger import logger
 
 
-# Node names (constants)
-MARKET_DATA = "market_data"
-PORTFOLIO = "portfolio"
-MONITORING = "monitoring"
-RISK = "risk"
-ANALYSIS = "analysis"
-DECISION = "decision"
-EXECUTION = "execution"
+# Node names (constants) - must not conflict with state keys
+MARKET_DATA = "fetch_market_data"
+PORTFOLIO = "update_portfolio"
+MONITORING = "monitor_positions"
+RISK = "assess_risk"
+ANALYSIS = "analyze_market"
+DECISION = "make_decision"
+EXECUTION = "execute_trade"
 
 
-def should_retry_market_data(state: TradingState) -> Literal["market_data", "portfolio"]:
+def should_retry_market_data(state: TradingState) -> Literal["fetch_market_data", "update_portfolio"]:
     """
     Decide whether to retry market data gathering or proceed.
     
     Returns:
-        "market_data" to retry, "portfolio" to proceed
+        "fetch_market_data" to retry, "update_portfolio" to proceed
     """
     data_complete = state.get('data_complete', False)
     retry_count = state.get('retry_count', 0)
@@ -45,12 +45,12 @@ def should_retry_market_data(state: TradingState) -> Literal["market_data", "por
     return PORTFOLIO
 
 
-def should_exit_positions(state: TradingState) -> Literal["execution", "risk"]:
+def should_exit_positions(state: TradingState) -> Literal["execute_trade", "assess_risk"]:
     """
     Decide whether to execute exit positions or proceed to risk check.
     
     Returns:
-        "execution" to exit positions, "risk" to proceed with new trades
+        "execute_trade" to exit positions, "assess_risk" to proceed with new trades
     """
     should_exit = state.get('should_exit_positions', False)
     exit_positions = state.get('exit_positions', [])
@@ -86,12 +86,12 @@ def should_continue_from_risk(state: TradingState) -> str:
     # Case 2: No decision yet - continue to analysis (preliminary risk check passed)
     if not decision:
         logger.info(f"[TradingGraph] Risk check passed, proceeding to analysis")
-        return ANALYSIS
+        return ANALYSIS  # Returns "analyze_market"
     
     # Case 3: Decision exists - check if trade should be executed
     if action in ['BUY', 'SELL', 'CLOSE_POSITION'] and confidence >= 0.70:
         logger.info(f"[TradingGraph] Decision approved: {action} (confidence: {confidence:.2f}), executing trade")
-        return EXECUTION
+        return EXECUTION  # Returns "execute_trade"
     
     # Case 4: Decision is HOLD or doesn't meet trade criteria - end
     logger.info(f"[TradingGraph] No trade execution needed (action: {action}, confidence: {confidence:.2f})")

@@ -14,7 +14,7 @@ KEY FIXES:
 """
 from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from app.services.ohlcv import ohlcv_service
 from app.utils.logger import logger
 from app.utils.database import db_connection
@@ -30,7 +30,8 @@ class PoolRequest(BaseModel):
     pool_address: str = Field(..., min_length=1, description="Pool address")
     network: str = Field(default="movement", description="Network ID")
     
-    @validator('pool_address')
+    @field_validator('pool_address')
+    @classmethod
     def validate_pool_address(cls, v):
         if not v or not v.strip():
             raise ValueError('pool_address cannot be empty')
@@ -41,7 +42,8 @@ class BackfillRequest(BaseModel):
     """Request model for backfill operations."""
     num_candles: int = Field(default=200, ge=1, le=1000, description="Number of candles to backfill")
     
-    @validator('num_candles')
+    @field_validator('num_candles')
+    @classmethod
     def validate_num_candles(cls, v):
         if v < 1:
             raise ValueError('num_candles must be at least 1')
