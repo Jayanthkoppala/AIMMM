@@ -135,9 +135,89 @@ async def root():
     }
 
 
+def validate_environment_variables():
+    """Validate that all required environment variables are set."""
+    required_vars = {
+        "DATABASE_URL": settings.DATABASE_URL,
+        "OPENROUTER_API_KEY": settings.OPENROUTER_API_KEY,
+    }
+    
+    # Optional but recommended
+    recommended_vars = {
+        "CORS_ORIGINS": settings.CORS_ORIGINS,
+    }
+    
+    missing_required = []
+    missing_recommended = []
+    
+    for var_name, var_value in required_vars.items():
+        if not var_value or var_value.strip() == "":
+            missing_required.append(var_name)
+    
+    for var_name, var_value in recommended_vars.items():
+        if not var_value or (isinstance(var_value, str) and var_value.strip() == ""):
+            missing_recommended.append(var_name)
+    
+    if missing_required:
+        error_msg = (
+            f"❌ CRITICAL: Missing required environment variables:\n"
+            f"   {', '.join(missing_required)}\n\n"
+            f"Please set these in Railway dashboard:\n"
+            f"   1. Go to your Railway project\n"
+            f"   2. Click on your service\n"
+            f"   3. Go to 'Variables' tab\n"
+            f"   4. Add the missing variables\n"
+            f"   5. Redeploy the service\n\n"
+            f"Current environment variables detected: {len([v for v in required_vars.values() if v])}/{len(required_vars)} required"
+        )
+        logger.error(error_msg)
+        raise ValueError(error_msg)
+    
+    if missing_recommended:
+        logger.warning(
+            f"⚠️  Missing recommended environment variables: {', '.join(missing_recommended)}\n"
+            f"   The application may not work correctly without these."
+        )
+    
+    # Log successfully loaded variables (without sensitive values)
+    loaded_vars = []
+    for var_name in required_vars.keys():
+        if var_name in ["OPENROUTER_API_KEY", "DATABASE_URL"]:
+            # Mask sensitive values
+            value = required_vars[var_name]
+            if value:
+                if "OPENROUTER_API_KEY" in var_name:
+                    loaded_vars.append(f"{var_name}=***{value[-4:] if len(value) > 4 else '****'}")
+                elif "DATABASE_URL" in var_name:
+                    # Show only the host part
+                    try:
+                        from urllib.parse import urlparse
+                        parsed = urlparse(value)
+                        loaded_vars.append(f"{var_name}=postgresql://***@{parsed.hostname}:{parsed.port or 5432}/{parsed.path.lstrip('/')}")
+                    except:
+                        loaded_vars.append(f"{var_name}=***")
+                else:
+                    loaded_vars.append(f"{var_name}=SET")
+            else:
+                loaded_vars.append(f"{var_name}=NOT_SET")
+        else:
+            loaded_vars.append(f"{var_name}=SET" if required_vars[var_name] else f"{var_name}=NOT_SET")
+    
+    logger.info(f"✅ Environment variables validated: {', '.join(loaded_vars)}")
+
+
 @app.on_event("startup")
 async def startup_event():
     """Start background services on application startup."""
+    # Validate environment variables first
+    try:
+        validate_environment_variables()
+        logger.info("✅ All required environment variables are set")
+    except ValueError as e:
+        logger.error(f"❌ Environment validation failed: {e}")
+        # Don't raise - let the app start but log the error clearly
+        # This way Railway logs will show the issue
+    
     # Initialize CoinGecko database tables
     from app.utils.db_init import init_coingecko_tables, init_strategy_tables, init_users_table, reset_sequence
     if init_coingecko_tables():
