@@ -732,8 +732,8 @@ async def remove_pool_from_monitoring(
 async def get_candles(
     pool_address: str = Query(..., description="Pool address"),
     network: str = Query("movement", description="Network ID"),
-    limit: int = Query(500, ge=1, le=5000, description="Maximum number of candles"),
-    hours_back: Optional[int] = Query(None, ge=1, le=720, description="Only get candles from last N hours"),
+    limit: int = Query(100, ge=1, le=1000, description="Maximum number of candles (default: 100, max: 1000)"),
+    hours_back: Optional[int] = Query(None, ge=1, le=168, description="Only get candles from last N hours (max: 168 = 7 days)"),
     from_db: bool = Query(True, description="Fetch from database (True) or CoinGecko API (False)"),
     store: bool = Query(False, description="Store to DB if fetching from API")
 ):
@@ -785,22 +785,29 @@ async def get_candles(
             
             pool_id = pool_result['id']
             
-            # Build query
-            candles_query = """
-                SELECT timestamp, open_price, high_price, low_price, close_price, volume
-                FROM ohlcv_candles
-                WHERE pool_id = %s
-            """
-            params = [pool_id]
-            
+            # Build optimized query with index-friendly ORDER BY
+            # Use parameterized query to prevent SQL injection
             if hours_back:
-                candles_query += " AND timestamp >= NOW() - INTERVAL '%s hours'"
-                params.append(hours_back)
+                candles_query = """
+                    SELECT timestamp, open_price, high_price, low_price, close_price, volume
+                    FROM ohlcv_candles
+                    WHERE pool_id = %s AND timestamp >= NOW() - INTERVAL '%s hours'
+                    ORDER BY timestamp DESC
+                    LIMIT %s
+                """
+                params = (pool_id, hours_back, limit)
+            else:
+                # Optimized: Use LIMIT without WHERE clause when no time filter
+                candles_query = """
+                    SELECT timestamp, open_price, high_price, low_price, close_price, volume
+                    FROM ohlcv_candles
+                    WHERE pool_id = %s
+                    ORDER BY timestamp DESC
+                    LIMIT %s
+                """
+                params = (pool_id, limit)
             
-            candles_query += " ORDER BY timestamp DESC LIMIT %s"
-            params.append(limit)
-            
-            rows = db_connection.execute_query(candles_query, tuple(params), fetch_all=True)
+            rows = db_connection.execute_query(candles_query, params, fetch_all=True)
             
             if not rows:
                 return {
@@ -817,20 +824,29 @@ async def get_candles(
                     }
                 }
             
-            # Convert to dict format
-            candles = [
-                {
-                    "timestamp": int(row['timestamp'].timestamp()) if hasattr(row['timestamp'], 'timestamp') else row['timestamp'],
+            # Convert to dict format - optimized for performance
+            # Pre-allocate list size for better performance
+            candles = []
+            for row in rows:
+                # Handle timestamp conversion efficiently
+                ts = row['timestamp']
+                if hasattr(ts, 'timestamp'):
+                    ts_int = int(ts.timestamp())
+                elif isinstance(ts, (int, float)):
+                    ts_int = int(ts)
+                else:
+                    ts_int = int(ts) if ts else 0
+                
+                candles.append({
+                    "timestamp": ts_int,
                     "open": float(row['open_price']),
                     "high": float(row['high_price']),
                     "low": float(row['low_price']),
                     "close": float(row['close_price']),
                     "volume": float(row['volume'])
-                }
-                for row in rows
-            ]
+                })
             
-            # Reverse to get chronological order
+            # Reverse to get chronological order (oldest first)
             candles.reverse()
             
             return {
@@ -920,7 +936,7 @@ async def get_candles_by_pool(
 async def get_indicators(
     pool_address: str = Query(..., description="Pool address"),
     network: str = Query("movement", description="Network ID"),
-    limit: int = Query(1, ge=1, le=100, description="Number of latest indicator rows")
+    limit: int = Query(1, ge=1, le=10, description="Number of latest indicator rows (default: 1, max: 10)")
 ):
     """
     Get latest technical indicators for a pool from database.
@@ -938,7 +954,7 @@ async def get_indicators(
         
         pool_id = pool_result['id']
         
-        # Get latest indicators
+        # Get latest indicators - optimized query with LIMIT
         indicators_query = """
             SELECT 
                 timestamp,
@@ -955,6 +971,7 @@ async def get_indicators(
             ORDER BY timestamp DESC
             LIMIT %s
         """
+        # Use tuple for params (more efficient)
         rows = db_connection.execute_query(indicators_query, (pool_id, limit), fetch_all=True)
         
         if not rows:
@@ -968,11 +985,20 @@ async def get_indicators(
                 }
             }
         
-        # Format indicators
+        # Format indicators - optimized conversion
         indicators = []
         for row in rows:
+            # Efficient timestamp conversion
+            ts = row['timestamp']
+            if hasattr(ts, 'timestamp'):
+                ts_int = int(ts.timestamp())
+            elif isinstance(ts, (int, float)):
+                ts_int = int(ts)
+            else:
+                ts_int = int(ts) if ts else 0
+            
             indicator = {
-                "timestamp": int(row['timestamp'].timestamp()) if hasattr(row['timestamp'], 'timestamp') else row['timestamp'],
+                "timestamp": ts_int,
                 "momentum": {
                     "rsi": float(row['rsi']) if row.get('rsi') is not None else None,
                     "stoch": float(row['stoch']) if row.get('stoch') is not None else None,

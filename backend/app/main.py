@@ -13,14 +13,29 @@ app = FastAPI(
     version="0.1.0"
 )
 
-# CORS middleware
+# CORS middleware - CRITICAL: Must allow OPTIONS for preflight requests
+# This fixes OPTIONS 400 errors that break frontend
+cors_origins = settings.CORS_ORIGINS
+if isinstance(cors_origins, str):
+    cors_origins = [origin.strip() for origin in cors_origins.split(",") if origin.strip()]
+
+# If no origins configured or only localhost, allow all origins
+# This ensures CORS works in production without manual configuration
+# For production, set CORS_ORIGINS env var with your frontend URL(s)
+if not cors_origins or (len(cors_origins) == 1 and "localhost" in cors_origins[0]):
+    cors_origins = ["*"]
+    allow_creds = False  # Can't use credentials with wildcard
+else:
+    allow_creds = True
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=cors_origins,
+    allow_credentials=allow_creds,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
-    expose_headers=["X-PAYMENT-RESPONSE"]
+    expose_headers=["X-PAYMENT-RESPONSE"],
+    max_age=3600  # Cache preflight for 1 hour
 )
 
 
@@ -76,13 +91,32 @@ async def general_exception_handler(request: Request, exc: Exception):
     )
 
 
-# Request logging middleware
+# Request logging middleware with timing
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    """Log all incoming requests."""
-    logger.info(f"{request.method} {request.url.path} - Client: {request.client.host if request.client else 'unknown'}")
+    """Log all incoming requests with response time."""
+    import time
+    start_time = time.time()
+    
+    # Skip logging for health checks to reduce noise
+    if request.url.path not in ["/health", "/"]:
+        logger.info(f"{request.method} {request.url.path} - Client: {request.client.host if request.client else 'unknown'}")
+    
     response = await call_next(request)
-    logger.info(f"{request.method} {request.url.path} - Status: {response.status_code}")
+    
+    # Calculate response time
+    duration = time.time() - start_time
+    duration_ms = int(duration * 1000)
+    
+    # Log slow requests (>500ms) as warnings
+    if duration > 0.5:
+        logger.warning(f"{request.method} {request.url.path} - Status: {response.status_code} - SLOW: {duration_ms}ms")
+    elif request.url.path not in ["/health", "/"]:
+        logger.info(f"{request.method} {request.url.path} - Status: {response.status_code} - {duration_ms}ms")
+    
+    # Add timing header for debugging
+    response.headers["X-Response-Time"] = f"{duration_ms}ms"
+    
     return response
 
 
