@@ -1,9 +1,9 @@
 {
-  "name": "@ai-trading-agent/frontend",
+  "name": "@aimmm/frontend",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -H 0.0.0.0 -p 5000",
+    "dev": "next dev -H 0.0.0.0 -p 3000",
     "dev:turbo": "next dev --turbopack",
     "build": "next build",
     "build:turbo": "next build --turbopack",

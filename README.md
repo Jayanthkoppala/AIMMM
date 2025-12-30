@@ -1,4 +1,4 @@
-# AI Trading Agent Hackathon App
+# AIMMM
 
 A production-ready hackathon application featuring AI trading agents on Movement Network. The system integrates Switchboard oracles, Mosaic DEX, x402 payments, and OpenRouter LLM inference.
 
@@ -65,7 +65,7 @@ pnpm dev:backend   # Backend on :8000
 ### Project Structure
 
 ```
-ai-trading-agent/
+aimmm/
 ├── contracts/          # Move smart contracts
 ├── backend/           # FastAPI backend
 └── frontend/          # Next.js frontend

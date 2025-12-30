@@ -3,7 +3,7 @@
 
 services:
   - type: web
-    name: ai-trading-agent-backend
+    name: aimmm-backend
     env: python
     region: oregon  # Change to your preferred region
     plan: free

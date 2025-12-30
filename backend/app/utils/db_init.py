@@ -63,6 +63,73 @@ def reset_sequence():
         logger.warning(f"Could not reset ohlcv_candles sequence: {e}")
 
 
+def init_users_table() -> bool:
+    """
+    Initialize users table for proper user management.
+    Returns True if successful, False otherwise.
+    """
+    if not db_connection.pool:
+        logger.warning("Database connection not available, cannot initialize users table")
+        return False
+    
+    try:
+        logger.info("Creating users table...")
+        
+        # Create users table
+        create_users_query = """
+            CREATE TABLE IF NOT EXISTS users (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_identifier VARCHAR(255) NOT NULL UNIQUE,
+                privy_user_id VARCHAR(255),
+                email VARCHAR(255),
+                wallet_address VARCHAR(255),
+                session_id VARCHAR(255),
+                auth_method VARCHAR(50) NOT NULL DEFAULT 'wallet',
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                last_active TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            )
+        """
+        result = db_connection.execute_query(create_users_query, fetch_all=False)
+        if result is None:
+            logger.error("Failed to create users table")
+            return False
+        logger.info("Created users table")
+        
+        # Add email column if it doesn't exist (migration)
+        try:
+            alter_email_query = """
+                ALTER TABLE users 
+                ADD COLUMN IF NOT EXISTS email VARCHAR(255)
+            """
+            db_connection.execute_query(alter_email_query, fetch_all=False)
+            logger.info("Added email column to users table (if not exists)")
+        except Exception as e:
+            logger.warning(f"Error adding email column (may already exist): {e}")
+        
+        # Create indexes
+        indexes = [
+            "CREATE INDEX IF NOT EXISTS idx_users_identifier ON users(user_identifier)",
+            "CREATE INDEX IF NOT EXISTS idx_users_privy_id ON users(privy_user_id) WHERE privy_user_id IS NOT NULL",
+            "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL",
+            "CREATE INDEX IF NOT EXISTS idx_users_wallet ON users(wallet_address) WHERE wallet_address IS NOT NULL",
+            "CREATE INDEX IF NOT EXISTS idx_users_session ON users(session_id) WHERE session_id IS NOT NULL"
+        ]
+        
+        for idx_query in indexes:
+            try:
+                db_connection.execute_query(idx_query, fetch_all=False)
+            except Exception as e:
+                logger.warning(f"Error creating index (may already exist): {e}")
+        
+        logger.info("Users table initialized successfully")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error initializing users table: {e}", exc_info=True)
+        return False
+
+
 def init_strategy_tables() -> bool:
     """
     Initialize strategy builder tables: user_strategies, strategy_executions, paper_trading_balances.
@@ -75,11 +142,14 @@ def init_strategy_tables() -> bool:
     try:
         logger.info("Creating strategy builder tables...")
         
-        # 1. Create user_strategies table
+        # Ensure users table exists first
+        init_users_table()
+        
+        # 1. Create user_strategies table with foreign key to users
         create_strategies_query = """
             CREATE TABLE IF NOT EXISTS user_strategies (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                user_id VARCHAR(255) NOT NULL,
+                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                 wallet_address VARCHAR(255),
                 name VARCHAR(200) NOT NULL,
                 description TEXT,
@@ -100,6 +170,56 @@ def init_strategy_tables() -> bool:
             return False
         logger.info("Created user_strategies table")
         
+        # Migration: Handle existing user_id column if it's VARCHAR
+        try:
+            # Check if user_id column exists and its type
+            check_type_query = """
+                SELECT data_type, column_name
+                FROM information_schema.columns 
+                WHERE table_name = 'user_strategies' 
+                AND column_name = 'user_id'
+            """
+            type_check = db_connection.execute_query(check_type_query, fetch_one=True)
+            
+            if type_check and type_check.get('data_type') == 'character varying':
+                logger.info("Migrating user_strategies.user_id from VARCHAR to UUID...")
+                # Step 1: Add new UUID column
+                alter_add_uuid = """
+                    ALTER TABLE user_strategies 
+                    ADD COLUMN IF NOT EXISTS user_id_uuid UUID REFERENCES users(id) ON DELETE CASCADE
+                """
+                db_connection.execute_query(alter_add_uuid, fetch_all=False)
+                
+                # Step 2: Migrate data - create users for existing user_ids and link them
+                migrate_query = """
+                    INSERT INTO users (id, user_identifier, auth_method, created_at)
+                    SELECT gen_random_uuid(), user_id, 'legacy', NOW()
+                    FROM (SELECT DISTINCT user_id FROM user_strategies WHERE user_id_uuid IS NULL) AS distinct_users
+                    ON CONFLICT (user_identifier) DO NOTHING
+                """
+                db_connection.execute_query(migrate_query, fetch_all=False)
+                
+                # Step 3: Update user_strategies to link to users
+                update_link_query = """
+                    UPDATE user_strategies us
+                    SET user_id_uuid = u.id
+                    FROM users u
+                    WHERE us.user_id = u.user_identifier
+                    AND us.user_id_uuid IS NULL
+                """
+                db_connection.execute_query(update_link_query, fetch_all=False)
+                
+                # Step 4: Drop old column and rename new one
+                alter_drop_old = "ALTER TABLE user_strategies DROP COLUMN IF EXISTS user_id"
+                db_connection.execute_query(alter_drop_old, fetch_all=False)
+                
+                alter_rename = "ALTER TABLE user_strategies RENAME COLUMN user_id_uuid TO user_id"
+                db_connection.execute_query(alter_rename, fetch_all=False)
+                
+                logger.info("Migration completed: user_strategies.user_id is now UUID")
+        except Exception as e:
+            logger.warning(f"Error during user_id migration (may already be migrated): {e}")
+        
         # Add pool columns if table already exists (migration)
         try:
             alter_query1 = """
@@ -117,12 +237,12 @@ def init_strategy_tables() -> bool:
         except Exception as e:
             logger.warning(f"Error adding pool columns (may already exist): {e}")
         
-        # 2. Create strategy_executions table
+        # 2. Create strategy_executions table with foreign key to users
         create_executions_query = """
             CREATE TABLE IF NOT EXISTS strategy_executions (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 strategy_id UUID NOT NULL REFERENCES user_strategies(id) ON DELETE CASCADE,
-                user_id VARCHAR(255) NOT NULL,
+                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                 execution_timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
                 
                 llm_model VARCHAR(100) NOT NULL,
@@ -182,6 +302,24 @@ def init_strategy_tables() -> bool:
             "CREATE INDEX IF NOT EXISTS idx_executions_user_id ON strategy_executions(user_id, execution_timestamp DESC)",
             "CREATE INDEX IF NOT EXISTS idx_balances_strategy_id ON paper_trading_balances(strategy_id)"
         ]
+        
+        # Migration: Update existing user_id columns from VARCHAR to UUID if needed
+        # This is a safe migration that won't break existing data
+        try:
+            # Check if user_strategies.user_id is already UUID type
+            check_type_query = """
+                SELECT data_type 
+                FROM information_schema.columns 
+                WHERE table_name = 'user_strategies' 
+                AND column_name = 'user_id'
+            """
+            type_check = db_connection.execute_query(check_type_query, fetch_one=True)
+            if type_check and type_check.get('data_type') == 'character varying':
+                logger.info("Migrating user_strategies.user_id from VARCHAR to UUID...")
+                # This migration will be handled by get_or_create_user function
+                logger.info("Migration will be handled automatically on first use")
+        except Exception as e:
+            logger.warning(f"Error checking user_id column type: {e}")
         
         for idx_query in indexes:
             try:

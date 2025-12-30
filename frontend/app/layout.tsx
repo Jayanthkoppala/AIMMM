@@ -7,8 +7,8 @@ import { Toaster } from "sonner";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "AI Trading Agent",
-  description: "AI Trading Agent on Movement Network",
+  title: "AIMMM",
+  description: "AIMMM - Autonomous Trading Protocol on Movement Network",
 };
 
 export default function RootLayout({

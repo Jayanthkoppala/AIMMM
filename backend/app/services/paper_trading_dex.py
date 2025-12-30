@@ -425,6 +425,50 @@ class PaperTradingDEX:
             quote_data: Full quote data from Mosaic (optional, for detailed fee calculation)
         """
         try:
+            # CRITICAL: Final safeguard - check max_concurrent_positions for BUY operations
+            # This prevents opening new positions beyond the limit
+            if src_token_symbol == "USDC" and dst_token_symbol != "USDC":
+                # This is a BUY operation (buying dst_token with USDC)
+                try:
+                    # Get strategy config
+                    strategy_query = """
+                        SELECT strategy_config
+                        FROM user_strategies
+                        WHERE id = %s
+                    """
+                    strategy_result = db_connection.execute_query(
+                        strategy_query,
+                        (strategy_id,),
+                        fetch_one=True
+                    )
+                    
+                    if strategy_result and strategy_result.get('strategy_config'):
+                        strategy_config = strategy_result.get('strategy_config')
+                        paper_config = strategy_config.get('paper_trading_config', {})
+                        max_positions = paper_config.get('max_concurrent_positions', 5)
+                        
+                        # Get current active positions count
+                        active_count = await self.get_active_positions_count(strategy_id)
+                        
+                        # Check if this would create a new position
+                        dst_balance = await self.get_balance(strategy_id, dst_token_address, dst_token_symbol)
+                        is_new_position = dst_balance <= 0
+                        
+                        if is_new_position and active_count >= max_positions:
+                            logger.error(
+                                f"[Paper Trading] BLOCKED: Cannot execute BUY swap - max positions limit reached "
+                                f"({active_count}/{max_positions}). Would create new {dst_token_symbol} position."
+                            )
+                            return False
+                        elif active_count >= max_positions:
+                            logger.info(
+                                f"[Paper Trading] Allowing BUY: {active_count}/{max_positions} positions, "
+                                f"but {dst_token_symbol} position already exists"
+                            )
+                except Exception as e:
+                    logger.error(f"[Paper Trading] Error checking max positions in execute_swap: {e}")
+                    # Don't block if check fails, but log the error
+            
             # Get current balance (will auto-migrate from old format if needed)
             src_balance = await self.get_balance(strategy_id, src_token_address, src_token_symbol)
             
@@ -499,8 +543,55 @@ class PaperTradingDEX:
             if dst_token_symbol == "USDC":
                 dst_usd_value = new_dst_balance
             else:
-                # Use the effective price from the swap
-                dst_usd_value = new_dst_balance * price
+                # Use the effective price from the swap to calculate USD value
+                # Price is in USDC per token (e.g., 2940 USDC per WETH.e)
+                # So USD value = balance * price
+                if price <= 0:
+                    logger.error(
+                        f"[Paper Trading] Invalid price ({price}) for {dst_token_symbol} swap. "
+                        f"Using fallback: getting current market price from oracle."
+                    )
+                    # Fallback: try to get current price from oracle
+                    try:
+                        prices = await oracle.get_token_prices(
+                            dst_token_address,
+                            self.USDC_ADDRESS,
+                            pool_address=None
+                        )
+                        if prices and prices.get('token_a_price', 0) > 0:
+                            price = Decimal(str(prices.get('token_a_price', 0)))
+                            logger.info(f"[Paper Trading] Using oracle price: ${price:.6f} per {dst_token_symbol}")
+                        else:
+                            logger.error(f"[Paper Trading] Could not get oracle price for {dst_token_symbol}")
+                            # Last resort: use stored price if available
+                            if dst_balance > 0:
+                                stored_balance = await self.get_balance(strategy_id, dst_token_address, dst_token_symbol)
+                                # This shouldn't happen, but if it does, we'll log it
+                                logger.warning(f"[Paper Trading] Using stored balance as fallback (this is wrong!)")
+                                dst_usd_value = new_dst_balance  # This is wrong, but better than 0
+                            else:
+                                dst_usd_value = Decimal('0')
+                    except Exception as e:
+                        logger.error(f"[Paper Trading] Error getting oracle price: {e}")
+                        dst_usd_value = new_dst_balance  # Fallback (wrong, but prevents crash)
+                
+                if dst_usd_value is None:
+                    dst_usd_value = new_dst_balance * price
+                
+                # Validation: USD value should be much larger than balance for non-stablecoins
+                if dst_usd_value <= new_dst_balance and dst_token_symbol != "USDC":
+                    logger.error(
+                        f"[Paper Trading] VALIDATION FAILED: usd_value ({dst_usd_value}) <= balance ({new_dst_balance}) "
+                        f"for {dst_token_symbol}. Price was {price}. This indicates a calculation error!"
+                    )
+                    # Force recalculation with price validation
+                    if price > 0 and price < 10:  # Price seems too low (should be ~2940 for WETH)
+                        logger.error(f"[Paper Trading] Price {price} seems incorrect for {dst_token_symbol}")
+                
+                logger.info(
+                    f"[Paper Trading] Calculated {dst_token_symbol} USD value: "
+                    f"{new_dst_balance} tokens × ${price:.6f} = ${dst_usd_value:.2f} USD"
+                )
             
             await self.update_balance(
                 strategy_id,
@@ -622,20 +713,123 @@ class PaperTradingDEX:
                                 token_price = Decimal(str(prices.get('token_a_price', 0)))
                         except Exception as e:
                             logger.warning(f"Could not get current price for {token_symbol}: {e}")
-                            # Fallback to stored price if available
+                            # Fallback to stored price if available, but validate it first
                             stored_usd_value = Decimal(str(balance.get('usd_value', 0)))
                             if stored_usd_value > 0 and token_balance > 0:
-                                token_price = stored_usd_value / token_balance
+                                calculated_price = stored_usd_value / token_balance
+                                # Validate: price should be reasonable (not 1.0 for non-stablecoins)
+                                if token_symbol not in ['USDC', 'USDT', 'DAI'] and calculated_price < Decimal('10'):
+                                    logger.warning(
+                                        f"[Portfolio Value] Stored price {calculated_price} for {token_symbol} seems incorrect "
+                                        f"(usd_value={stored_usd_value}, balance={token_balance}). "
+                                        f"This might be a data corruption issue. Using 0 price to force recalculation."
+                                    )
+                                    token_price = Decimal('0')
+                                else:
+                                    token_price = calculated_price
                             else:
                                 token_price = Decimal('0')
                     
                     # Calculate current USD value
                     if token_price and token_price > 0:
                         usd_value = token_balance * token_price
+                        # Validation: USD value should be much larger than balance for non-stablecoins
+                        if token_symbol not in ['USDC', 'USDT', 'DAI'] and usd_value <= token_balance:
+                            logger.error(
+                                f"[Portfolio Value] VALIDATION FAILED: Calculated usd_value ({usd_value}) <= balance ({token_balance}) "
+                                f"for {token_symbol} with price {token_price}. This is incorrect! Attempting repair..."
+                            )
+                            # Try to repair: get price from recent executions
+                            try:
+                                repair_query = """
+                                    SELECT price
+                                    FROM strategy_executions
+                                    WHERE strategy_id = %s
+                                        AND symbol LIKE %s
+                                        AND price > 0
+                                        AND trade_executed = TRUE
+                                    ORDER BY execution_timestamp DESC
+                                    LIMIT 1
+                                """
+                                repair_result = db_connection.execute_query(
+                                    repair_query,
+                                    (strategy_id, f"%{token_symbol}%"),
+                                    fetch_one=True
+                                )
+                                if repair_result and repair_result.get('price'):
+                                    repair_price = Decimal(str(repair_result.get('price', 0)))
+                                    if repair_price > Decimal('10'):  # Reasonable price
+                                        token_price = repair_price
+                                        usd_value = token_balance * token_price
+                                        logger.info(
+                                            f"[Portfolio Value] Repaired {token_symbol} price from execution history: "
+                                            f"${token_price:.6f}, usd_value=${usd_value:.2f}"
+                                        )
+                                    else:
+                                        logger.warning(f"[Portfolio Value] Repair price {repair_price} also seems incorrect, skipping update")
+                                        usd_value = Decimal(str(balance.get('usd_value', 0)))  # Keep old value
+                                        token_price = usd_value / token_balance if token_balance > 0 else Decimal('0')
+                                else:
+                                    logger.warning(f"[Portfolio Value] No execution history found for repair, skipping update")
+                                    usd_value = Decimal(str(balance.get('usd_value', 0)))  # Keep old value
+                                    token_price = usd_value / token_balance if token_balance > 0 else Decimal('0')
+                            except Exception as repair_error:
+                                logger.error(f"[Portfolio Value] Error during repair attempt: {repair_error}")
+                                usd_value = Decimal(str(balance.get('usd_value', 0)))  # Keep old value
+                                token_price = usd_value / token_balance if token_balance > 0 else Decimal('0')
                     else:
-                        # If we can't get price, use stored value as fallback
-                        usd_value = Decimal(str(balance.get('usd_value', 0)))
-                        token_price = usd_value / token_balance if token_balance > 0 else Decimal('0')
+                        # If we can't get price, try to repair from execution history first
+                        try:
+                            repair_query = """
+                                SELECT price
+                                FROM strategy_executions
+                                WHERE strategy_id = %s
+                                    AND symbol LIKE %s
+                                    AND price > 0
+                                    AND trade_executed = TRUE
+                                ORDER BY execution_timestamp DESC
+                                LIMIT 1
+                            """
+                            repair_result = db_connection.execute_query(
+                                repair_query,
+                                (strategy_id, f"%{token_symbol}%"),
+                                fetch_one=True
+                            )
+                            if repair_result and repair_result.get('price'):
+                                repair_price = Decimal(str(repair_result.get('price', 0)))
+                                if repair_price > Decimal('10'):  # Reasonable price
+                                    token_price = repair_price
+                                    usd_value = token_balance * token_price
+                                    logger.info(
+                                        f"[Portfolio Value] Repaired {token_symbol} price from execution history: "
+                                        f"${token_price:.6f}, usd_value=${usd_value:.2f}"
+                                    )
+                                else:
+                                    # Fallback to stored value
+                                    usd_value = Decimal(str(balance.get('usd_value', 0)))
+                                    token_price = usd_value / token_balance if token_balance > 0 else Decimal('0')
+                                    if token_symbol not in ['USDC', 'USDT', 'DAI'] and token_price < Decimal('10') and usd_value > 0:
+                                        logger.warning(
+                                            f"[Portfolio Value] Stored usd_value for {token_symbol} appears corrupted "
+                                            f"(price={token_price}, usd_value={usd_value}, balance={token_balance}). "
+                                            f"Not updating to prevent feedback loop."
+                                        )
+                            else:
+                                # No execution history, use stored value as fallback
+                                usd_value = Decimal(str(balance.get('usd_value', 0)))
+                                token_price = usd_value / token_balance if token_balance > 0 else Decimal('0')
+                                # But validate it's not corrupted
+                                if token_symbol not in ['USDC', 'USDT', 'DAI'] and token_price < Decimal('10') and usd_value > 0:
+                                    logger.warning(
+                                        f"[Portfolio Value] Stored usd_value for {token_symbol} appears corrupted "
+                                        f"(price={token_price}, usd_value={usd_value}, balance={token_balance}). "
+                                        f"Not updating to prevent feedback loop."
+                                    )
+                        except Exception as repair_error:
+                            logger.error(f"[Portfolio Value] Error during repair attempt: {repair_error}")
+                            # Fallback to stored value
+                            usd_value = Decimal(str(balance.get('usd_value', 0)))
+                            token_price = usd_value / token_balance if token_balance > 0 else Decimal('0')
                     
                     # Calculate DCA (Dollar-Cost Averaging) entry price from ALL BUY executions
                     # DCA Formula: Average Entry Price = Total USD Spent on Buys / Total Tokens Bought
@@ -698,14 +892,37 @@ class PaperTradingDEX:
                         unrealized_pnl = Decimal('0')
                     
                     # Update stored USD value in database with current market value
+                    # Only update if we have a valid price and the value is reasonable
                     if token_price > 0:
-                        await self.update_balance(
-                            strategy_id,
-                            balance.get('token_address'),
-                            token_symbol,
-                            token_balance,
-                            usd_value
-                        )
+                        # Additional validation: for non-stablecoins, usd_value should be much larger than balance
+                        should_update = True
+                        if token_symbol not in ['USDC', 'USDT', 'DAI']:
+                            if usd_value <= token_balance:
+                                logger.warning(
+                                    f"[Portfolio Value] Skipping update for {token_symbol}: "
+                                    f"usd_value ({usd_value}) <= balance ({token_balance}) indicates corruption"
+                                )
+                                should_update = False
+                            elif token_price < Decimal('10'):
+                                logger.warning(
+                                    f"[Portfolio Value] Skipping update for {token_symbol}: "
+                                    f"price ({token_price}) < $10 seems incorrect"
+                                )
+                                should_update = False
+                        
+                        if should_update:
+                            await self.update_balance(
+                                strategy_id,
+                                balance.get('token_address'),
+                                token_symbol,
+                                token_balance,
+                                usd_value
+                            )
+                        else:
+                            logger.info(
+                                f"[Portfolio Value] Keeping existing usd_value for {token_symbol} "
+                                f"to avoid overwriting with corrupted data"
+                            )
                 
                 total_value += usd_value
                 total_unrealized_pnl += unrealized_pnl
@@ -1041,10 +1258,25 @@ class PaperTradingDEX:
             total_sells = counts.get('total_sells', 0) if counts else 0
             total_buys = counts.get('total_buys', 0) if counts else 0
             
-            # Get initial capital from paper trading state
-            state_query = "SELECT initial_capital FROM paper_trading_states WHERE strategy_id = %s"
-            state = db_connection.execute_query(state_query, (strategy_id,), fetch_one=True)
-            initial_capital = float(state.get('initial_capital', 1000)) if state else 1000.0
+            # Get initial capital from strategy config
+            # This avoids querying the non-existent paper_trading_states table
+            strategy_query = """
+                SELECT strategy_config
+                FROM user_strategies
+                WHERE id = %s
+            """
+            strategy_result = db_connection.execute_query(
+                strategy_query,
+                (strategy_id,),
+                fetch_one=True
+            )
+            
+            initial_capital = Decimal('1000')
+            if strategy_result and strategy_result.get('strategy_config'):
+                import json
+                config = json.loads(strategy_result.get('strategy_config')) if isinstance(strategy_result.get('strategy_config'), str) else strategy_result.get('strategy_config')
+                paper_config = config.get('paper_trading_config', {})
+                initial_capital = Decimal(str(paper_config.get('initial_capital_usdc', 1000)))
             
             # Get detailed sell trades for win/loss analysis
             sell_query = """
@@ -1169,7 +1401,7 @@ class PaperTradingDEX:
             avg_trade_duration_hours = avg_trade_duration_mins / 60
             
             # Return on Investment (ROI)
-            roi_pct = (float(net_pnl) / initial_capital) * 100 if initial_capital > 0 else 0
+            roi_pct = (float(net_pnl) / float(initial_capital)) * 100 if initial_capital > 0 else 0
             
             # Sharpe Ratio (simplified: using trade returns, assuming risk-free rate = 0)
             # Sharpe = Mean Return / Std Dev of Returns

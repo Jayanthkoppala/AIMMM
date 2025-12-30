@@ -5,17 +5,20 @@ import {
   Brain, 
   TrendingUp, 
   BarChart3, 
-  MessageSquare,
-  Activity,
-  AlertTriangle,
-  Cpu,
-  Zap,
-  Radio,
-  Server,
-  Database,
-  ArrowRight,
-  ChevronDown,
-  ChevronRight
+  MessageSquare, 
+  Activity, 
+  AlertTriangle, 
+  Cpu, 
+  Zap, 
+  Radio, 
+  Server, 
+  Database, 
+  ArrowRight, 
+  Terminal,
+  Wifi,
+  Workflow,
+  Code,
+  Lock
 } from "lucide-react";
 
 interface Agent {
@@ -35,441 +38,389 @@ interface Agent {
   };
 }
 
+// --- DECORATIVE UI COMPONENTS ---
+const Hexagon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 100 100" className={className} fill="currentColor">
+    <polygon points="50 0, 93 25, 93 75, 50 100, 7 75, 7 25" />
+  </svg>
+);
+
+const ConnectionLine = ({ active }: { active: boolean }) => (
+  <div className="hidden md:flex items-center flex-1 mx-2 relative h-1 bg-[#1a1a1a] overflow-hidden rounded-full">
+    {active && (
+      <div className="absolute inset-0 bg-[#00ff00] animate-progress-indeterminate shadow-[0_0_10px_#00ff00]" />
+    )}
+  </div>
+);
+
 export function AgentCapabilities() {
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
   const [pulseIndex, setPulseIndex] = useState(0);
-  const [systemStatus, setSystemStatus] = useState<"online" | "syncing">("online");
+  const [consoleLines, setConsoleLines] = useState<string[]>([
+    "[SYSTEM] Initializing Agent Network...",
+    "[NET] Connecting to Movement Mainnet...",
+    "[AUTH] Secure handshake established."
+  ]);
 
   const agents: Agent[] = [
     {
       id: "ohlcv",
-      name: "OHLCV Data Agent",
-      shortName: "OHLCV",
+      name: "OHLCV Collector",
+      shortName: "DATA",
       icon: BarChart3,
       status: "active",
-      description: "Real-time 1-minute candle data collector",
+      description: "Real-time 1m candle ingestion",
       dataType: "Market Feed",
       outputType: "Candle[]",
-      features: [
-        "Real-time 1-minute price candles",
-        "Volume analysis & tracking",
-        "Support/resistance detection",
-        "Price action pattern recognition"
-      ],
-      metrics: { uptime: "99.9%", latency: "45ms", requests: "1.2k/min" }
+      features: ["Price Normalization", "Volume Analysis", "Gap Detection"],
+      metrics: { uptime: "99.9%", latency: "45ms", requests: "1.2k/m" }
     },
     {
       id: "technical",
-      name: "Technical Indicators Agent",
+      name: "Indicator Engine",
       shortName: "TECH",
       icon: TrendingUp,
       status: "active",
-      description: "85+ technical indicators computation engine",
+      description: "Compute 85+ technicals",
       dataType: "Candle[]",
       outputType: "Indicators{}",
-      features: [
-        "Momentum: RSI, StochRSI, TSI, UO, Williams %R, AO, KAMA, ROC",
-        "Trend: SMA, EMA, MACD, ADX, Vortex, Ichimoku, Parabolic SAR",
-        "Volatility: ATR, Bollinger Bands, Keltner, Donchian",
-        "Volume: MFI, OBV, CMF, Force Index, VWAP"
-      ],
-      metrics: { uptime: "99.8%", latency: "120ms", requests: "850/min" }
+      features: ["RSI/MACD/Bollinger", "Trend Identification", "Volatility Scans"],
+      metrics: { uptime: "99.8%", latency: "120ms", requests: "850/m" }
     },
     {
       id: "sentiment",
-      name: "Sentiment Analysis Agent",
+      name: "Sentiment AI",
       shortName: "SENT",
       icon: MessageSquare,
       status: "processing",
-      description: "Multi-source sentiment aggregator",
+      description: "Social & News NLP analysis",
       dataType: "Social Feed",
       outputType: "Sentiment{}",
-      features: [
-        "Twitter/X real-time analysis",
-        "News sentiment scoring",
-        "Whale movement tracking",
-        "Fear & Greed Index"
-      ],
-      metrics: { uptime: "98.5%", latency: "2.1s", requests: "60/min" }
+      features: ["Whale Alert Tracking", "Fear/Greed Index", "Viral Topic Detection"],
+      metrics: { uptime: "98.5%", latency: "2.1s", requests: "60/m" }
     },
     {
       id: "risk",
-      name: "Risk Management Agent",
+      name: "Risk Guardian",
       shortName: "RISK",
       icon: AlertTriangle,
       status: "active",
-      description: "Dynamic risk control & position sizing",
+      description: "Position sizing & safety",
       dataType: "Strategy{}",
       outputType: "RiskParams{}",
-      features: [
-        "Dynamic position sizing by AI confidence",
-        "Adaptive stop-loss (volatility-based)",
-        "Take-profit optimization",
-        "Drawdown protection"
-      ],
-      metrics: { uptime: "99.9%", latency: "15ms", requests: "200/min" }
+      features: ["Max Drawdown Control", "Volatility Sizing", "Exposure Limits"],
+      metrics: { uptime: "99.9%", latency: "15ms", requests: "200/m" }
     },
     {
       id: "llm",
-      name: "LLM Decision Agent",
-      shortName: "LLM",
+      name: "Neural Core",
+      shortName: "BRAIN",
       icon: Brain,
       status: "active",
-      description: "Neural network trading decision engine",
-      dataType: "AllData{}",
+      description: "Final decision synthesis",
+      dataType: "AggregatedData",
       outputType: "Signal{}",
-      features: [
-        "Multi-agent data synthesis",
-        "Buy/Sell/Hold signal generation",
-        "Confidence scoring (0-100%)",
-        "Reasoning chain output"
-      ],
-      metrics: { uptime: "99.7%", latency: "1.8s", requests: "12/min" }
+      features: ["Multi-Agent Reasoning", "Signal Confidence", "Trade Logic Gen"],
+      metrics: { uptime: "99.7%", latency: "1.8s", requests: "12/m" }
     },
     {
       id: "execution",
-      name: "Execution Agent",
+      name: "Executor",
       shortName: "EXEC",
       icon: Activity,
       status: "idle",
-      description: "DEX trade execution via Mosaic",
+      description: "On-chain routing & signing",
       dataType: "Signal{}",
-      outputType: "Trade{}",
-      features: [
-        "Optimal route finding",
-        "Slippage protection",
-        "Paper trading simulation",
-        "Real execution on Movement"
-      ],
-      metrics: { uptime: "99.9%", latency: "350ms", requests: "5/min" }
+      outputType: "TxHash",
+      features: ["Gas Optimization", "Slippage Protection", "MEV Guard"],
+      metrics: { uptime: "99.9%", latency: "350ms", requests: "5/m" }
     }
   ];
 
+  // Animation for the "Pulse" traveling through the pipeline
   useEffect(() => {
     const interval = setInterval(() => {
-      setPulseIndex((prev) => (prev + 1) % agents.length);
-    }, 800);
+      setPulseIndex((prev) => (prev + 1) % (agents.length + 1));
+    }, 1000);
     return () => clearInterval(interval);
   }, [agents.length]);
 
+  // Console log simulator
   useEffect(() => {
     const interval = setInterval(() => {
-      setSystemStatus((prev) => prev === "online" ? "syncing" : "online");
-    }, 3000);
+      const logs = [
+        `[DATA] Candle close: $${(Math.random() * 2000 + 1000).toFixed(2)}`,
+        `[TECH] RSI(14) updated: ${(Math.random() * 100).toFixed(2)}`,
+        `[RISK] Position check passed. Exposure < 5%`,
+        `[SENT] New whale alert processed.`,
+        `[EXEC] Mempool scan complete.`,
+        `[LLM] Analyzing context window...`
+      ];
+      const randomLog = logs[Math.floor(Math.random() * logs.length)];
+      setConsoleLines(prev => [...prev.slice(-4), `${new Date().toLocaleTimeString()} ${randomLog}`]);
+    }, 2500);
     return () => clearInterval(interval);
   }, []);
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "active": return "text-[#00ff00]";
-      case "processing": return "text-[#ffff00]";
-      case "idle": return "text-[#666666]";
-      default: return "text-[#666666]";
-    }
-  };
-
-  const getStatusBg = (status: string) => {
-    switch (status) {
-      case "active": return "bg-[#00ff00]";
-      case "processing": return "bg-[#ffff00]";
-      case "idle": return "bg-[#666666]";
-      default: return "bg-[#666666]";
-    }
-  };
-
   return (
-    <div className="space-y-6 relative">
-      {/* System Header */}
-      <div className="border border-[#00ff00]/30 bg-black p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <Server className="h-6 w-6 text-[#00ff00]" />
-              <div className="absolute -top-1 -right-1 w-2 h-2 bg-[#00ff00] rounded-full animate-pulse" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-[#00ff00] font-mono tracking-wider">
-                AGENT_NETWORK_v2.1.0
-              </h1>
-              <p className="text-[10px] text-[#006600] font-mono">
-                Autonomous Trading Intelligence System
-              </p>
+    <div className="space-y-4">
+      
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* 1. HEADER & SYSTEM STATUS */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-4 bg-[#0a0a0a] border border-[#1a1a1a] relative overflow-hidden">
+        {/* Striped Background */}
+        <div className="absolute inset-0 bg-[repeating-linear-gradient(45deg,transparent,transparent_10px,#111_10px,#111_20px)] opacity-50" />
+        
+        <div className="relative z-10 flex items-center gap-4">
+          <div className="relative">
+            <div className="absolute inset-0 bg-[#00ff00] blur-md opacity-20 animate-pulse" />
+            <div className="w-12 h-12 border-2 border-[#00ff00] bg-black flex items-center justify-center">
+              <Workflow className="h-6 w-6 text-[#00ff00]" />
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Radio className={`h-4 w-4 ${systemStatus === "online" ? "text-[#00ff00]" : "text-[#ffff00]"} ${systemStatus === "syncing" ? "animate-pulse" : ""}`} />
-              <span className="text-xs font-mono text-[#00ff00]">
-                {systemStatus === "online" ? "SYSTEM ONLINE" : "SYNCING..."}
-              </span>
+          <div>
+            <h1 className="text-xl font-bold font-mono text-white tracking-widest">
+              AIMMM<span className="text-[#00ff00]">_SWARM</span>
+            </h1>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="w-2 h-2 rounded-full bg-[#00ff00] animate-pulse" />
+              <span className="text-[10px] font-mono text-[#006600]">ORCHESTRATION LAYER: ONLINE</span>
             </div>
-            <div className="text-xs font-mono text-[#006600] border border-[#1a1a1a] px-2 py-1">
-              6 AGENTS ACTIVE
-            </div>
+          </div>
+        </div>
+
+        <div className="relative z-10 flex gap-2">
+          <div className="px-3 py-1 bg-black border border-[#1a1a1a] flex items-center gap-2">
+             <Wifi className="h-3 w-3 text-[#00ff00]" />
+             <span className="text-[10px] font-mono text-[#666]">PING: 14ms</span>
+          </div>
+          <div className="px-3 py-1 bg-black border border-[#1a1a1a] flex items-center gap-2">
+             <Database className="h-3 w-3 text-[#00ff00]" />
+             <span className="text-[10px] font-mono text-[#666]">SYNCED</span>
           </div>
         </div>
       </div>
 
-      {/* Data Flow Pipeline Visualization */}
-      <div className="border border-[#1a1a1a] bg-[#050505] p-4">
-        <div className="flex items-center gap-2 mb-4">
-          <Database className="h-4 w-4 text-[#00ff00]" />
-          <span className="text-xs font-mono text-[#00ff00]">DATA_PIPELINE</span>
-          <span className="text-[10px] font-mono text-[#006600] ml-auto">Real-time flow visualization</span>
-        </div>
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* 2. CIRCUIT VISUALIZATION (Desktop Only) */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      <div className="hidden md:flex bg-[#050505] border border-[#1a1a1a] p-6 relative overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,255,0,0.03),transparent_70%)]" />
         
-        {/* Pipeline Flow */}
-        <div className="flex items-center justify-between overflow-x-auto py-4 px-2">
+        <div className="relative z-10 w-full flex items-center justify-between">
           {agents.map((agent, idx) => (
-            <div key={agent.id} className="flex items-center">
-              {/* Agent Node */}
-              <div 
-                className={`relative flex flex-col items-center cursor-pointer transition-all duration-300 ${
-                  pulseIndex === idx ? "scale-110" : "scale-100"
-                }`}
+            <div key={agent.id} className="flex items-center flex-1 last:flex-none">
+              
+              {/* Node */}
+              <button 
                 onClick={() => setExpandedAgent(expandedAgent === agent.id ? null : agent.id)}
+                className={`group relative flex flex-col items-center transition-all duration-300 ${
+                  expandedAgent === agent.id ? 'scale-110' : 'hover:scale-105'
+                }`}
               >
-                {/* Pulse ring */}
-                {pulseIndex === idx && (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-14 h-14 border border-[#00ff00] rounded-full animate-ping opacity-30" />
-                  </div>
-                )}
-                
-                {/* Node circle */}
-                <div className={`w-12 h-12 rounded-full border-2 flex items-center justify-center transition-all ${
-                  expandedAgent === agent.id 
-                    ? "border-[#00ff00] bg-[#00ff00]/20" 
-                    : "border-[#1a1a1a] bg-black hover:border-[#00ff00]/50"
+                {/* Hexagon Status Ring */}
+                <div className={`w-14 h-14 relative flex items-center justify-center transition-all ${
+                   agent.status === 'processing' ? 'animate-pulse' : ''
                 }`}>
-                  <agent.icon className={`h-5 w-5 ${getStatusColor(agent.status)}`} />
+                   <Hexagon className={`absolute inset-0 ${
+                     expandedAgent === agent.id 
+                       ? 'text-[#00ff00]' 
+                       : pulseIndex === idx 
+                         ? 'text-[#00ff00]/50' 
+                         : 'text-[#1a1a1a] group-hover:text-[#333]'
+                   }`} />
+                   <agent.icon className={`h-5 w-5 relative z-10 ${
+                      expandedAgent === agent.id ? 'text-black' : 'text-[#666] group-hover:text-[#00ff00]'
+                   }`} />
                 </div>
                 
-                {/* Status indicator */}
-                <div className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border border-black ${getStatusBg(agent.status)} ${
-                  agent.status === "processing" ? "animate-pulse" : ""
-                }`} />
-                
-                {/* Label */}
-                <span className={`text-[10px] font-mono mt-2 ${
-                  expandedAgent === agent.id ? "text-[#00ff00]" : "text-[#006600]"
+                <span className={`text-[10px] font-mono mt-2 font-bold transition-colors ${
+                  expandedAgent === agent.id ? 'text-[#00ff00]' : 'text-[#444] group-hover:text-[#666]'
                 }`}>
                   {agent.shortName}
                 </span>
-              </div>
-              
-              {/* Connection Arrow */}
+                
+                {/* Activity Indicator Dot */}
+                {pulseIndex === idx && (
+                  <div className="absolute -top-1 right-0 w-2 h-2 bg-[#00ff00] rounded-full shadow-[0_0_5px_#00ff00]" />
+                )}
+              </button>
+
+              {/* Connector */}
               {idx < agents.length - 1 && (
-                <div className="flex items-center mx-2">
-                  <div className={`h-[2px] w-8 transition-colors duration-300 ${
-                    pulseIndex === idx ? "bg-[#00ff00]" : "bg-[#1a1a1a]"
-                  }`} />
-                  <Zap className={`h-3 w-3 mx-1 transition-colors duration-300 ${
-                    pulseIndex === idx ? "text-[#00ff00]" : "text-[#1a1a1a]"
-                  }`} />
-                  <div className={`h-[2px] w-8 transition-colors duration-300 ${
-                    pulseIndex === idx ? "bg-[#00ff00]" : "bg-[#1a1a1a]"
-                  }`} />
-                </div>
+                <ConnectionLine active={pulseIndex === idx} />
               )}
             </div>
           ))}
         </div>
       </div>
 
-      {/* Agent Details Grid */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* 3. SERVER BLADE GRID */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        {agents.map((agent, idx) => (
+        {agents.map((agent) => (
           <div
             key={agent.id}
-            className={`border transition-all duration-300 cursor-pointer ${
+            onClick={() => setExpandedAgent(expandedAgent === agent.id ? null : agent.id)}
+            className={`cursor-pointer border transition-all duration-300 overflow-hidden ${
               expandedAgent === agent.id 
                 ? "border-[#00ff00] bg-[#0a0a0a]" 
-                : "border-[#1a1a1a] bg-black hover:border-[#00ff00]/30"
+                : "border-[#1a1a1a] bg-[#050505] hover:border-[#333]"
             }`}
-            onClick={() => setExpandedAgent(expandedAgent === agent.id ? null : agent.id)}
           >
-            {/* Agent Header */}
-            <div className="p-4">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className={`p-2 border ${
-                    expandedAgent === agent.id ? "border-[#00ff00] bg-[#00ff00]/10" : "border-[#1a1a1a]"
-                  }`}>
-                    <agent.icon className={`h-5 w-5 ${getStatusColor(agent.status)}`} />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-sm font-bold font-mono text-[#00ff00]">
-                        {agent.name}
-                      </h3>
-                      <span className={`text-[9px] font-mono px-1.5 py-0.5 border ${
-                        agent.status === "active" ? "border-[#00ff00]/50 text-[#00ff00]" :
-                        agent.status === "processing" ? "border-[#ffff00]/50 text-[#ffff00]" :
-                        "border-[#666666]/50 text-[#666666]"
-                      }`}>
-                        {agent.status.toUpperCase()}
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-[#006600] font-mono mt-0.5">
-                      {agent.description}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1 text-[#006600]">
-                  {expandedAgent === agent.id ? (
-                    <ChevronDown className="h-4 w-4" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4" />
-                  )}
-                </div>
+            {/* Header Row */}
+            <div className="flex items-stretch h-16">
+              {/* Status Bar Indicator */}
+              <div className={`w-1 ${
+                agent.status === 'active' ? 'bg-[#00ff00]' : 
+                agent.status === 'processing' ? 'bg-[#ffff00]' : 'bg-[#333]'
+              }`} />
+
+              {/* Icon Box */}
+              <div className="w-16 flex items-center justify-center bg-[#080808] border-r border-[#1a1a1a]">
+                 <agent.icon className={`h-6 w-6 ${
+                    expandedAgent === agent.id ? 'text-[#00ff00]' : 'text-[#444]'
+                 }`} />
               </div>
 
-              {/* Data Flow Info */}
-              <div className="flex items-center gap-2 mt-3 text-[10px] font-mono">
-                <span className="text-[#666666]">IN:</span>
-                <span className="text-[#00ff00]/70 px-1.5 py-0.5 bg-[#00ff00]/5 border border-[#1a1a1a]">
-                  {agent.dataType}
-                </span>
-                <ArrowRight className="h-3 w-3 text-[#006600]" />
-                <span className="text-[#666666]">OUT:</span>
-                <span className="text-[#00ff00]/70 px-1.5 py-0.5 bg-[#00ff00]/5 border border-[#1a1a1a]">
-                  {agent.outputType}
-                </span>
+              {/* Info Area */}
+              <div className="flex-1 flex items-center justify-between px-4">
+                 <div>
+                    <h3 className="text-sm font-bold font-mono text-white flex items-center gap-2">
+                       {agent.name}
+                       {agent.status === 'processing' && <Loader2 className="h-3 w-3 animate-spin text-[#ffff00]" />}
+                    </h3>
+                    <p className="text-[10px] font-mono text-[#666]">{agent.description}</p>
+                 </div>
+                 
+                 {/* Mini Metrics */}
+                 <div className="hidden sm:flex flex-col items-end gap-1">
+                    <div className="flex items-center gap-1.5 px-1.5 py-0.5 bg-[#111] rounded border border-[#222]">
+                       <span className="w-1.5 h-1.5 rounded-full bg-[#00ff00]" />
+                       <span className="text-[9px] font-mono text-[#888]">{agent.metrics.uptime}</span>
+                    </div>
+                 </div>
               </div>
             </div>
 
-            {/* Expanded Content */}
+            {/* Expanded Details Panel */}
             {expandedAgent === agent.id && (
-              <div className="border-t border-[#1a1a1a] p-4 space-y-4">
-                {/* Metrics */}
-                <div className="flex gap-4">
-                  <div className="flex-1 p-2 bg-black border border-[#1a1a1a]">
-                    <div className="text-[9px] text-[#666666] font-mono">UPTIME</div>
-                    <div className="text-sm text-[#00ff00] font-mono font-bold">{agent.metrics.uptime}</div>
+               <div className="border-t border-[#1a1a1a] p-4 bg-[#080808] animate-in slide-in-from-top-2 duration-200">
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                     <div className="space-y-1">
+                        <span className="text-[9px] text-[#444] font-mono uppercase">Input Stream</span>
+                        <div className="flex items-center gap-2 text-xs font-mono text-[#00ff00] bg-[#00ff00]/5 p-1 border border-[#00ff00]/20">
+                           <Database className="h-3 w-3" />
+                           {agent.dataType}
+                        </div>
+                     </div>
+                     <div className="space-y-1">
+                        <span className="text-[9px] text-[#444] font-mono uppercase">Output Stream</span>
+                        <div className="flex items-center gap-2 text-xs font-mono text-[#00ff00] bg-[#00ff00]/5 p-1 border border-[#00ff00]/20">
+                           <ArrowRight className="h-3 w-3" />
+                           {agent.outputType}
+                        </div>
+                     </div>
                   </div>
-                  <div className="flex-1 p-2 bg-black border border-[#1a1a1a]">
-                    <div className="text-[9px] text-[#666666] font-mono">LATENCY</div>
-                    <div className="text-sm text-[#00ff00] font-mono font-bold">{agent.metrics.latency}</div>
-                  </div>
-                  <div className="flex-1 p-2 bg-black border border-[#1a1a1a]">
-                    <div className="text-[9px] text-[#666666] font-mono">REQUESTS</div>
-                    <div className="text-sm text-[#00ff00] font-mono font-bold">{agent.metrics.requests}</div>
-                  </div>
-                </div>
 
-                {/* Features */}
-                <div>
-                  <div className="text-[10px] text-[#666666] font-mono mb-2">CAPABILITIES</div>
-                  <div className="space-y-1.5">
-                    {agent.features.map((feature, featIdx) => (
-                      <div key={featIdx} className="flex items-start gap-2">
-                        <span className="text-[#00ff00] text-[10px] font-mono">$</span>
-                        <span className="text-[11px] text-[#006600] font-mono leading-relaxed">
-                          {feature}
-                        </span>
-                      </div>
-                    ))}
+                  <div className="space-y-2">
+                     <span className="text-[9px] text-[#444] font-mono uppercase">Module Capabilities</span>
+                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {agent.features.map((feat, i) => (
+                           <div key={i} className="flex items-center gap-2 text-[10px] font-mono text-[#ccc]">
+                              <Zap className="h-3 w-3 text-[#666]" />
+                              {feat}
+                           </div>
+                        ))}
+                     </div>
                   </div>
-                </div>
-              </div>
+               </div>
             )}
           </div>
         ))}
       </div>
 
-      {/* System Console */}
-      <div className="border border-[#1a1a1a] bg-black">
-        {/* Console Header */}
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1a1a1a] bg-[#0a0a0a]">
-          <div className="flex gap-1.5">
-            <div className="w-2.5 h-2.5 rounded-full bg-[#ff5f57]" />
-            <div className="w-2.5 h-2.5 rounded-full bg-[#febc2e]" />
-            <div className="w-2.5 h-2.5 rounded-full bg-[#28c840]" />
-          </div>
-          <span className="text-[10px] text-[#666666] font-mono ml-2">system_console — bash</span>
-        </div>
-        
-        {/* Console Content */}
-        <div className="p-4 font-mono text-[11px] space-y-1">
-          <div className="text-[#006600]">
-            <span className="text-[#00ff00]">$</span> cat /etc/agent_network/config.md
-          </div>
-          <div className="text-[#006600] mt-2">
-            ╔══════════════════════════════════════════════════════════════╗
-          </div>
-          <div className="text-[#006600]">
-            ║  <span className="text-[#00ff00]">AGENT NETWORK CONFIGURATION</span>                                ║
-          </div>
-          <div className="text-[#006600]">
-            ╠══════════════════════════════════════════════════════════════╣
-          </div>
-          <div className="text-[#006600]">
-            ║  Network: Movement Mainnet                                   ║
-          </div>
-          <div className="text-[#006600]">
-            ║  DEX: Mosaic Aggregator                                      ║
-          </div>
-          <div className="text-[#006600]">
-            ║  Data: 1-min candles + 24h sentiment                         ║
-          </div>
-          <div className="text-[#006600]">
-            ║  Capital: $1000 (paper) / Connected wallet (live)            ║
-          </div>
-          <div className="text-[#006600]">
-            ╚══════════════════════════════════════════════════════════════╝
-          </div>
-          <div className="mt-3 text-[#006600]">
-            <span className="text-[#00ff00]">$</span> ./start_trading --mode=autonomous
-          </div>
-          <div className="text-[#006600]">
-            [INFO] Navigate to <span className="text-[#00ff00]">./strategies</span> to create your first strategy
-          </div>
-          <div className="text-[#006600]">
-            [INFO] All agents will coordinate automatically based on your description
-          </div>
-          <div className="flex items-center gap-1 mt-1">
-            <span className="text-[#00ff00]">$</span>
-            <span className="w-2 h-4 bg-[#00ff00] animate-pulse" />
-          </div>
-        </div>
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* 4. SYSTEM CONSOLE & HUD */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+         
+         {/* Live Logs Terminal */}
+         <div className="lg:col-span-2 bg-black border border-[#1a1a1a] flex flex-col h-[200px] font-mono text-xs">
+            <div className="flex items-center justify-between px-3 py-1.5 bg-[#111] border-b border-[#1a1a1a]">
+               <div className="flex items-center gap-2">
+                  <Terminal className="h-3 w-3 text-[#00ff00]" />
+                  <span className="text-[#666] text-[10px]">daemon.log</span>
+               </div>
+               <span className="w-2 h-2 bg-[#00ff00] animate-pulse rounded-full" />
+            </div>
+            <div className="flex-1 p-3 overflow-hidden flex flex-col justify-end">
+               {consoleLines.map((line, i) => (
+                  <div key={i} className="text-[#006600] animate-in slide-in-from-left-2 fade-in duration-300">
+                     <span className="text-[#003300] mr-2">$</span>
+                     {line}
+                  </div>
+               ))}
+               <div className="h-4 w-2 bg-[#00ff00] animate-pulse mt-1" />
+            </div>
+         </div>
+
+         {/* HUD Stats */}
+         <div className="bg-[#0a0a0a] border border-[#1a1a1a] p-4 flex flex-col justify-between">
+            <div>
+               <div className="flex items-center gap-2 mb-4">
+                  <Activity className="h-4 w-4 text-[#00ff00]" />
+                  <span className="text-xs font-mono text-white tracking-widest">SYSTEM_HEALTH</span>
+               </div>
+               
+               <div className="space-y-4">
+                  <div>
+                     <div className="flex justify-between text-[10px] font-mono text-[#666] mb-1">
+                        <span>CPU LOAD</span>
+                        <span>24%</span>
+                     </div>
+                     <div className="h-1 bg-[#1a1a1a] w-full">
+                        <div className="h-full bg-[#00ff00]" style={{ width: '24%' }} />
+                     </div>
+                  </div>
+                  <div>
+                     <div className="flex justify-between text-[10px] font-mono text-[#666] mb-1">
+                        <span>MEMORY</span>
+                        <span>6.2GB / 16GB</span>
+                     </div>
+                     <div className="h-1 bg-[#1a1a1a] w-full">
+                        <div className="h-full bg-[#00ff00]" style={{ width: '38%' }} />
+                     </div>
+                  </div>
+                  <div>
+                     <div className="flex justify-between text-[10px] font-mono text-[#666] mb-1">
+                        <span>NETWORK</span>
+                        <span>1.2 MB/s</span>
+                     </div>
+                     <div className="h-1 bg-[#1a1a1a] w-full">
+                        <div className="h-full bg-[#00ff00] animate-pulse" style={{ width: '15%' }} />
+                     </div>
+                  </div>
+               </div>
+            </div>
+            
+            <div className="mt-4 pt-4 border-t border-[#1a1a1a] flex items-center justify-between text-[10px] font-mono">
+               <span className="text-[#444]">VERSION: 2.1.0</span>
+               <div className="flex items-center gap-1 text-[#00ff00]">
+                  <Lock className="h-3 w-3" />
+                  SECURE
+               </div>
+            </div>
+         </div>
       </div>
 
-      {/* Quick Stats Footer */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="p-3 border border-[#1a1a1a] bg-black">
-          <div className="flex items-center gap-2 mb-1">
-            <Cpu className="h-3.5 w-3.5 text-[#00ff00]" />
-            <span className="text-[9px] text-[#666666] font-mono">PROCESSING</span>
-          </div>
-          <div className="text-lg text-[#00ff00] font-mono font-bold">85+</div>
-          <div className="text-[9px] text-[#006600] font-mono">Indicators</div>
-        </div>
-        <div className="p-3 border border-[#1a1a1a] bg-black">
-          <div className="flex items-center gap-2 mb-1">
-            <Database className="h-3.5 w-3.5 text-[#00ff00]" />
-            <span className="text-[9px] text-[#666666] font-mono">DATA POINTS</span>
-          </div>
-          <div className="text-lg text-[#00ff00] font-mono font-bold">2.5k+</div>
-          <div className="text-[9px] text-[#006600] font-mono">Candles stored</div>
-        </div>
-        <div className="p-3 border border-[#1a1a1a] bg-black">
-          <div className="flex items-center gap-2 mb-1">
-            <Zap className="h-3.5 w-3.5 text-[#00ff00]" />
-            <span className="text-[9px] text-[#666666] font-mono">LATENCY</span>
-          </div>
-          <div className="text-lg text-[#00ff00] font-mono font-bold">&lt;2s</div>
-          <div className="text-[9px] text-[#006600] font-mono">Decision time</div>
-        </div>
-        <div className="p-3 border border-[#1a1a1a] bg-black">
-          <div className="flex items-center gap-2 mb-1">
-            <Radio className="h-3.5 w-3.5 text-[#00ff00]" />
-            <span className="text-[9px] text-[#666666] font-mono">UPTIME</span>
-          </div>
-          <div className="text-lg text-[#00ff00] font-mono font-bold">99.9%</div>
-          <div className="text-[9px] text-[#006600] font-mono">System availability</div>
-        </div>
-      </div>
     </div>
   );
 }
+
+// Helper needed for the types (simple mock for the example)
+const Loader2 = ({ className }: { className?: string }) => (
+  <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+);

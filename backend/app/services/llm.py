@@ -135,8 +135,8 @@ Respond in JSON:
                 headers={
                     "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
                     "Content-Type": "application/json",
-                    "HTTP-Referer": "https://github.com/ai-trading-agent",
-                    "X-Title": "AI Trading Agent"
+                    "HTTP-Referer": "https://github.com/aimmm",
+                    "X-Title": "AIMMM"
                 },
                 json=request_payload,
                 timeout=60.0  # Increased timeout for reasoning models
@@ -194,6 +194,7 @@ async def get_strategy_decision(
     portfolio_state: Dict[str, Any],
     market_data: Dict[str, Any],
     strategy_config: Dict[str, Any],
+    strategy_description: Optional[str] = None,
     llm_model: Optional[str] = None
 ) -> Dict[str, Any]:
     """
@@ -203,6 +204,7 @@ async def get_strategy_decision(
         portfolio_state: Current portfolio balances and value
         market_data: OHLCV, technical indicators, sentiment data
         strategy_config: Strategy configuration
+        strategy_description: User's strategy description/instructions (used as main prompt)
         llm_model: Optional LLM model override
     
     Returns:
@@ -215,6 +217,12 @@ async def get_strategy_decision(
         }
     """
     try:
+        # Log strategy description usage
+        if strategy_description:
+            logger.info(f"[LLM] Using user's strategy description: {strategy_description[:100]}...")
+        else:
+            logger.warning("[LLM] No strategy description provided, using default trading approach")
+        
         # Extract paper trading config
         paper_config = strategy_config.get('paper_trading_config', {})
         capital_per_trade = paper_config.get('capital_per_trade', 100)
@@ -247,27 +255,28 @@ async def get_strategy_decision(
         current_price = market_data.get('current_price', 0)
         token_symbol = market_data.get('token_symbol', 'MOVE')
         
-        # Build comprehensive prompt for DEX spot trading
-        system_prompt = f"""You are an AI trading agent managing a DEX spot trading portfolio.
+        # Build system prompt with safety rules and context (execution governor)
+        system_prompt = f"""You are an execution advisor for DEX spot paper trading. You enforce safety and risk rules while executing the user's trading strategy.
 
-CURRENT PORTFOLIO:
+**CURRENT PORTFOLIO:**
 {balance_str}
 - Total Portfolio Value: ${total_value:.2f}
 - Initial Capital: ${initial_capital:.2f}
 - Unrealized P&L: ${unrealized_pnl:.2f} ({portfolio_state.get('unrealized_pnl_pct', 0):.2f}%)
 
-PAPER TRADING PARAMETERS:
+**PAPER TRADING PARAMETERS:**
 - Available USDC: ${usdc_balance:.2f}
 - Capital per trade: ${capital_per_trade}
-- Max positions: {max_positions}
+- Max concurrent positions: {max_positions}
 - Current active positions: {active_positions}
 - Stop-loss: {stop_loss_pct * 100}%
 - Take-profit: {take_profit_pct * 100}%
 
-CURRENT MARKET ({token_symbol}):
+**CURRENT MARKET ({token_symbol}):**
 - Current Price: ${current_price:.6f}
 
-HISTORICAL DATA:
+**MARKET DATA:**
+HISTORICAL OHLCV:
 {ohlcv_data}
 
 TECHNICAL INDICATORS:
@@ -276,36 +285,55 @@ TECHNICAL INDICATORS:
 SENTIMENT ANALYSIS:
 {sentiment_data}
 
-TRADING RULES:
-- You can BUY tokens (swap USDC → {token_symbol})
-- You can SELL tokens (swap {token_symbol} → USDC) 
-- You can CLOSE_POSITION (sell all holdings of a token)
-- You can HOLD (do nothing)
-- Minimum confidence for new trades: 0.70
-- Cannot open new positions if active positions >= max positions
-- Cannot buy if USDC balance < capital_per_trade
-- Consider gas costs and slippage on Movement network
-- Analyze technical indicators (RSI, MACD, moving averages)
-- Consider sentiment signals
-- Look for clear entry/exit signals
+**SAFETY RULES (MANDATORY):**
+1. Minimum confidence for new trades: 0.70
+2. Cannot open new positions if active positions >= max positions ({active_positions}/{max_positions})
+3. Cannot buy if USDC balance < capital_per_trade (available: ${usdc_balance:.2f})
+4. Consider gas costs and slippage on Movement network
+5. Always analyze technical indicators and sentiment before making decisions
 
-ANALYSIS APPROACH:
-1. Review technical indicators for trend direction
-2. Check sentiment for market confidence
-3. Evaluate risk/reward ratio
-4. Ensure sufficient capital and position limits
-5. Make decision with confidence score
-
-OUTPUT FORMAT (JSON only, no explanations):
+**OUTPUT FORMAT (JSON only, no markdown, no text outside JSON):**
 {{
   "action": "BUY | SELL | HOLD | CLOSE_POSITION",
   "token": "{token_symbol}",
   "amount_usdc": {capital_per_trade},
-  "confidence": 0.85,
-  "reasoning": "Brief explanation of decision based on indicators and sentiment"
-}}"""
+  "confidence": 0.70-1.0,
+  "reasoning": "Detailed explanation covering: 1) Market context, 2) Indicator analysis, 3) Risk assessment, 4) Decision rationale based on the user's strategy"
+}}
 
-        user_prompt = f"Analyze the current market conditions and make a trading decision for {token_symbol}."
+**CRITICAL:** Follow the USER STRATEGY provided in the user message. Your job is to faithfully execute their strategy while enforcing the safety rules above."""
+
+        # Build user prompt with the user's strategy description as the main instruction
+        if strategy_description and strategy_description.strip():
+            user_prompt = f"""**YOUR TRADING STRATEGY:**
+{strategy_description}
+
+**TASK:**
+Execute the strategy above for {token_symbol}. Analyze the market data provided in the system message and make a trading decision that follows your strategy rules.
+
+Provide a detailed analysis in the "reasoning" field covering:
+1. Market context: Current price action, trend, volatility
+2. Indicator analysis: Which indicators support/oppose this decision (cite specific values)
+3. Risk assessment: Position limits, capital availability, stop-loss logic
+4. Decision rationale: Why this action fits your strategy and confidence justification
+
+Return ONLY raw JSON (no markdown, no text outside JSON)."""
+        else:
+            # Fallback if no strategy description provided
+            user_prompt = f"""**DEFAULT TRADING APPROACH:**
+Analyze the current market conditions for {token_symbol} using the provided technical indicators, sentiment data, and historical price action.
+
+**GUIDELINES:**
+- BUY if indicators show bullish signals (RSI < 70, MACD positive, price above moving averages, positive sentiment)
+- SELL if indicators show bearish signals (RSI > 70, MACD negative, price below moving averages, negative sentiment)
+- HOLD if signals are mixed or unclear
+- Minimum confidence: 0.70 for new trades
+- Consider risk/reward ratio and position limits
+
+**TASK:**
+Make a trading decision based on the market data provided in the system message. Provide detailed reasoning covering market context, indicator analysis, risk assessment, and decision rationale.
+
+Return ONLY raw JSON (no markdown, no text outside JSON)."""
         
         # Call LLM
         model = llm_model or strategy_config.get('llm_provider', settings.OPENROUTER_MODEL)
@@ -333,8 +361,8 @@ OUTPUT FORMAT (JSON only, no explanations):
                 headers={
                     "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
                     "Content-Type": "application/json",
-                    "HTTP-Referer": "https://github.com/ai-trading-agent",
-                    "X-Title": "AI Trading Agent - Strategy Executor"
+                    "HTTP-Referer": "https://github.com/aimmm",
+                    "X-Title": "AIMMM - Strategy Executor"
                 },
                 json=request_payload,
                 timeout=90.0  # Increased timeout for reasoning models

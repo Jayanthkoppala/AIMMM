@@ -5,7 +5,6 @@ import {
   RefreshCw,
   TrendingUp,
   TrendingDown,
-  Minus,
   Activity,
   BarChart3,
   Brain,
@@ -18,7 +17,10 @@ import {
   Volume2,
   MessageCircle,
   Users,
-  Sparkles
+  Sparkles,
+  Terminal,
+  Cpu,
+  ScanLine
 } from "lucide-react";
 import { Button } from "./ui/button";
 import {
@@ -57,8 +59,10 @@ interface PoolData {
   error: string | null;
 }
 
+// --- Utility Functions ---
+
 function formatNumber(num: number | null | undefined, decimals: number = 2): string {
-  if (num === null || num === undefined || isNaN(num)) return "—";
+  if (num === null || num === undefined || isNaN(num)) return "N/A";
   if (Math.abs(num) < 0.0001) return num.toExponential(2);
   return num.toLocaleString(undefined, { 
     minimumFractionDigits: decimals, 
@@ -86,41 +90,50 @@ function getSentimentColor(score: number): string {
   return "text-[#ffaa00]";
 }
 
-function getSentimentBg(score: number): string {
-  if (score >= 0.3) return "bg-[#00ff00]/10 border-[#00ff00]/30";
-  if (score <= -0.3) return "bg-[#ff3333]/10 border-[#ff3333]/30";
-  return "bg-[#ffaa00]/10 border-[#ffaa00]/30";
-}
+// --- UI Components ---
 
-function PriceChange({ current, previous }: { current: number; previous: number }) {
-  const change = ((current - previous) / previous) * 100;
-  const isPositive = change >= 0;
-  
+/** * A stylized data cell for the dashboard look.
+ * Label small at top, Value large at bottom.
+ */
+function DataCell({ 
+  label, 
+  value, 
+  subValue,
+  color = "text-[#00ff00]",
+  icon: Icon
+}: { 
+  label: string; 
+  value: string | number | null; 
+  subValue?: string;
+  color?: string;
+  icon?: any;
+}) {
   return (
-    <span className={`flex items-center gap-1 text-xs ${isPositive ? "text-[#00ff00]" : "text-[#ff3333]"}`}>
-      {isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-      {isPositive ? "+" : ""}{change.toFixed(2)}%
-    </span>
+    <div className="flex flex-col p-2 bg-[#050505] border-l border-[#1a1a1a] hover:bg-[#111] transition-colors group relative overflow-hidden">
+      <div className="flex items-center gap-1.5 mb-1">
+        {Icon && <Icon className="h-3 w-3 text-[#006600] group-hover:text-[#00ff00] transition-colors" />}
+        <span className="text-[9px] text-[#006600] uppercase font-mono tracking-wider">{label}</span>
+      </div>
+      <div className={`text-sm font-mono font-bold tracking-tight ${color}`}>
+        {value}
+        {subValue && <span className="text-[10px] text-[#004400] ml-1">{subValue}</span>}
+      </div>
+      {/* Decorative corner */}
+      <div className="absolute top-0 right-0 w-1 h-1 bg-[#006600]/20" />
+    </div>
   );
 }
 
-function IndicatorRow({ 
-  label, 
-  value, 
-  suffix = "",
-  color = "text-[#00ff00]" 
-}: { 
-  label: string; 
-  value: number | null; 
-  suffix?: string;
-  color?: string;
-}) {
+function SectionHeader({ icon: Icon, title }: { icon: any, title: string }) {
   return (
-    <div className="flex justify-between items-center py-1 border-b border-[#1a1a1a] last:border-0">
-      <span className="text-[10px] text-[#006600] font-mono">{label}</span>
-      <span className={`text-[11px] font-mono ${color}`}>
-        {formatNumber(value)}{suffix}
+    <div className="flex items-center gap-2 mb-2 pb-1 border-b border-[#1a1a1a]">
+      <div className="bg-[#00ff00]/10 p-1 rounded-sm">
+        <Icon className="h-3 w-3 text-[#00ff00]" />
+      </div>
+      <span className="text-[10px] font-bold text-[#00ff00] uppercase font-mono tracking-widest">
+        {title}
       </span>
+      <div className="flex-1 h-px bg-gradient-to-r from-[#00ff00]/30 to-transparent ml-2" />
     </div>
   );
 }
@@ -128,7 +141,7 @@ function IndicatorRow({
 function MiniCandleChart({ candles }: { candles: OHLCVCandle[] }) {
   if (!candles || candles.length === 0) return null;
   
-  const lastN = candles.slice(-30);
+  const lastN = candles.slice(-40); // Show a bit more history
   const highs = lastN.map(c => c.high);
   const lows = lastN.map(c => c.low);
   const maxPrice = Math.max(...highs);
@@ -136,41 +149,56 @@ function MiniCandleChart({ candles }: { candles: OHLCVCandle[] }) {
   const range = maxPrice - minPrice || 1;
   
   return (
-    <div className="flex items-end gap-[2px] h-12">
-      {lastN.map((candle, i) => {
-        const isGreen = candle.close >= candle.open;
-        const bodyTop = Math.max(candle.open, candle.close);
-        const bodyBottom = Math.min(candle.open, candle.close);
-        const bodyHeight = ((bodyTop - bodyBottom) / range) * 100;
-        const bodyBottom_pct = ((bodyBottom - minPrice) / range) * 100;
-        
-        return (
-          <div
-            key={i}
-            className="relative w-[3px]"
-            style={{ height: "100%" }}
-          >
-            {/* Wick */}
-            <div
-              className="absolute w-[1px] left-[1px]"
-              style={{
-                bottom: `${((candle.low - minPrice) / range) * 100}%`,
-                height: `${((candle.high - candle.low) / range) * 100}%`,
-                backgroundColor: isGreen ? "#00ff00" : "#ff3333"
-              }}
-            />
-            {/* Body */}
-            <div
-              className="absolute w-full"
-              style={{
-                bottom: `${bodyBottom_pct}%`,
-                height: `${Math.max(bodyHeight, 2)}%`,
-                backgroundColor: isGreen ? "#00ff00" : "#ff3333"
-              }}
-            />
-          </div>
-        );
-      })}
+    <div className="relative w-full h-24 bg-[#050505] border border-[#1a1a1a] p-2 overflow-hidden">
+      {/* Grid Lines Background */}
+      <div className="absolute inset-0 opacity-10" 
+           style={{ backgroundImage: 'linear-gradient(#00ff00 1px, transparent 1px), linear-gradient(90deg, #00ff00 1px, transparent 1px)', backgroundSize: '20px 20px' }} 
+      />
+      
+      <div className="flex items-end justify-between gap-[1px] h-full relative z-10">
+        {lastN.map((candle, i) => {
+          const isGreen = candle.close >= candle.open;
+          const bodyTop = Math.max(candle.open, candle.close);
+          const bodyBottom = Math.min(candle.open, candle.close);
+          
+          // Percentages
+          const wickTopPct = ((candle.high - minPrice) / range) * 100;
+          const wickHeightPct = ((candle.high - candle.low) / range) * 100;
+          const bodyBottomPct = ((bodyBottom - minPrice) / range) * 100;
+          const bodyHeightPct = ((bodyTop - bodyBottom) / range) * 100;
+          
+          return (
+            <div key={i} className="relative flex-1 group" style={{ height: "100%" }}>
+              {/* Wick */}
+              <div
+                className="absolute w-[1px] left-1/2 -translate-x-1/2 opacity-60"
+                style={{
+                  bottom: `${((candle.low - minPrice) / range) * 100}%`,
+                  height: `${Math.max(wickHeightPct, 1)}%`,
+                  backgroundColor: isGreen ? "#00ff00" : "#ff3333"
+                }}
+              />
+              {/* Body */}
+              <div
+                className="absolute w-[80%] left-[10%]"
+                style={{
+                  bottom: `${bodyBottomPct}%`,
+                  height: `${Math.max(bodyHeightPct, 2)}%`,
+                  backgroundColor: isGreen ? "#00ff00" : "#ff3333"
+                }}
+              />
+            </div>
+          );
+        })}
+      </div>
+      
+      {/* Price Labels Overlay */}
+      <div className="absolute top-1 right-1 text-[8px] font-mono text-[#006600] bg-black/80 px-1">
+        H: {maxPrice.toFixed(2)}
+      </div>
+      <div className="absolute bottom-1 right-1 text-[8px] font-mono text-[#006600] bg-black/80 px-1">
+        L: {minPrice.toFixed(2)}
+      </div>
     </div>
   );
 }
@@ -182,304 +210,254 @@ function PoolAnalyticsCard({ pool, data, onRefresh }: {
 }) {
   const [expanded, setExpanded] = useState(true);
   
-  const latestCandle = data.ohlcv && data.ohlcv.length > 0 
-    ? data.ohlcv[data.ohlcv.length - 1] 
-    : null;
-  const prevCandle = data.ohlcv && data.ohlcv.length > 1 
-    ? data.ohlcv[data.ohlcv.length - 2] 
-    : null;
+  const latestCandle = data.ohlcv?.length ? data.ohlcv[data.ohlcv.length - 1] : null;
+  const prevCandle = data.ohlcv && data.ohlcv.length > 1 ? data.ohlcv[data.ohlcv.length - 2] : null;
   
+  // Calculate Price Change for Header
+  const change = latestCandle && prevCandle 
+    ? ((latestCandle.close - prevCandle.close) / prevCandle.close) * 100 
+    : 0;
+  const isPositive = change >= 0;
+
   return (
-    <div className="border border-[#1a1a1a] bg-[#0a0a0a]">
-      {/* Header */}
+    <div className={`border border-[#1a1a1a] bg-[#080808] transition-all duration-300 ${expanded ? 'shadow-[0_0_15px_-5px_rgba(0,255,0,0.1)]' : ''}`}>
+      
+      {/* --- Collapsed Header Strip --- */}
       <div 
-        className="flex items-center justify-between p-3 border-b border-[#1a1a1a] cursor-pointer hover:bg-[#111]"
+        className="flex items-center justify-between p-3 cursor-pointer hover:bg-[#0f0f0f] border-b border-[#1a1a1a] group"
         onClick={() => setExpanded(!expanded)}
       >
-        <div className="flex items-center gap-3">
-          <Activity className="h-4 w-4 text-[#00ff00]" />
+        <div className="flex items-center gap-4">
+          {/* Status Indicator */}
+          <div className={`h-2 w-2 rounded-full ${data.loading ? 'bg-yellow-500 animate-pulse' : 'bg-[#00ff00] shadow-[0_0_8px_#00ff00]'}`} />
+          
           <div>
-            <span className="text-sm font-mono text-[#00ff00]">{pool.name}</span>
-            {latestCandle && (
-              <div className="flex items-center gap-2 mt-0.5">
-                <span className="text-lg font-bold text-[#00ff00] glow-text-subtle">
-                  ${formatPrice(latestCandle.close)}
-                </span>
-                {prevCandle && (
-                  <PriceChange current={latestCandle.close} previous={prevCandle.close} />
-                )}
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-bold font-mono text-[#eee] group-hover:text-[#00ff00] transition-colors">
+                {pool.name}
+              </h3>
+              <span className="text-[9px] text-[#004400] font-mono border border-[#004400] px-1 rounded">
+                1M
+              </span>
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={(e) => { e.stopPropagation(); onRefresh(); }}
-            disabled={data.loading}
-            className="h-7 w-7 p-0 hover:bg-[#00ff00]/10"
-          >
-            <RefreshCw className={`h-3 w-3 text-[#00ff00] ${data.loading ? "animate-spin" : ""}`} />
-          </Button>
-          {expanded ? (
-            <ChevronUp className="h-4 w-4 text-[#006600]" />
-          ) : (
-            <ChevronDown className="h-4 w-4 text-[#006600]" />
+
+        <div className="flex items-center gap-6">
+          {latestCandle && (
+            <div className="text-right">
+              <div className="text-sm font-mono font-bold text-[#00ff00]">
+                ${formatPrice(latestCandle.close)}
+              </div>
+              <div className={`flex items-center justify-end gap-1 text-[10px] font-mono ${isPositive ? "text-[#00ff00]" : "text-[#ff3333]"}`}>
+                {isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                {change > 0 ? "+" : ""}{change.toFixed(2)}%
+              </div>
+            </div>
           )}
+          
+          <div className="flex gap-1">
+             <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-[#006600] hover:text-[#00ff00] hover:bg-[#00ff00]/10"
+              onClick={(e) => { e.stopPropagation(); onRefresh(); }}
+            >
+              <RefreshCw className={`h-3 w-3 ${data.loading ? "animate-spin" : ""}`} />
+            </Button>
+            {expanded ? <ChevronUp className="h-4 w-4 text-[#006600]" /> : <ChevronDown className="h-4 w-4 text-[#006600]" />}
+          </div>
         </div>
       </div>
       
+      {/* --- Expanded Dashboard Content --- */}
       {expanded && (
-        <div className="p-3 space-y-4">
+        <div className="p-4 space-y-5 animate-in slide-in-from-top-2 duration-300">
+          
           {data.loading && !data.ohlcv ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 text-[#00ff00] animate-spin" />
+             <div className="flex flex-col items-center justify-center py-12 gap-2">
+              <Loader2 className="h-8 w-8 text-[#00ff00] animate-spin" />
+              <span className="text-[10px] text-[#006600] font-mono animate-pulse">INITIALIZING DATA STREAM...</span>
             </div>
           ) : data.error ? (
-            <div className="text-center py-4 text-[#ff3333] text-xs font-mono">
-              Error: {data.error}
+            <div className="p-4 border border-[#ff3333]/30 bg-[#ff3333]/5 text-[#ff3333] font-mono text-xs flex items-center gap-2">
+              <Terminal className="h-4 w-4" />
+              ERROR: {data.error}
             </div>
           ) : (
             <>
-              {/* OHLCV Section */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <BarChart3 className="h-3 w-3 text-[#00ff00]" />
-                  <span className="text-[10px] text-[#006600] uppercase font-mono">
-                    OHLCV (1m candles)
-                  </span>
-                  {data.ohlcv && (
-                    <span className="text-[10px] text-[#004400] font-mono">
-                      [{data.ohlcv.length} candles]
-                    </span>
-                  )}
+              {/* --- ZONE 1: MARKET ACTION --- */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                {/* Chart Area */}
+                <div className="md:col-span-8 space-y-2">
+                   <SectionHeader icon={BarChart3} title="Price Action [OHLCV]" />
+                   <div className="flex gap-4 h-full">
+                      <div className="flex-1">
+                        {data.ohlcv && <MiniCandleChart candles={data.ohlcv} />}
+                      </div>
+                   </div>
                 </div>
-                
-                {data.ohlcv && data.ohlcv.length > 0 && (
-                  <>
-                    <MiniCandleChart candles={data.ohlcv} />
-                    
-                    <div className="grid grid-cols-5 gap-2 text-center">
-                      {[
-                        { label: "O", value: latestCandle?.open },
-                        { label: "H", value: latestCandle?.high },
-                        { label: "L", value: latestCandle?.low },
-                        { label: "C", value: latestCandle?.close },
-                        { label: "V", value: latestCandle?.volume }
-                      ].map(({ label, value }) => (
-                        <div key={label} className="p-2 bg-black border border-[#1a1a1a]">
-                          <div className="text-[9px] text-[#006600] font-mono">{label}</div>
-                          <div className="text-[10px] text-[#00ff00] font-mono">
-                            {label === "V" ? formatNumber(value, 0) : formatPrice(value)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-              
-              {/* Divider */}
-              <div className="h-px bg-gradient-to-r from-transparent via-[#00ff00]/30 to-transparent" />
-              
-              {/* Technical Indicators Section */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Target className="h-3 w-3 text-[#00ff00]" />
-                  <span className="text-[10px] text-[#006600] uppercase font-mono">
-                    Technical Indicators
-                  </span>
-                </div>
-                
-                {data.indicators ? (
-                  <div className="grid grid-cols-2 gap-3">
-                    {/* Momentum */}
-                    <div className="p-2 bg-black border border-[#1a1a1a]">
-                      <div className="flex items-center gap-1 mb-2 pb-1 border-b border-[#1a1a1a]">
-                        <Zap className="h-3 w-3 text-[#00ff00]" />
-                        <span className="text-[9px] text-[#00ff00] uppercase font-mono">Momentum</span>
-                      </div>
-                      <IndicatorRow 
-                        label="RSI" 
-                        value={data.indicators.momentum.rsi} 
-                        color={getRSIColor(data.indicators.momentum.rsi)}
-                      />
-                      <IndicatorRow label="Stoch" value={data.indicators.momentum.stoch} suffix="%" />
-                      <IndicatorRow label="MFI" value={data.indicators.momentum.mfi} />
-                      <IndicatorRow label="Williams %R" value={data.indicators.momentum.williams_r} />
-                      <IndicatorRow label="CCI" value={data.indicators.momentum.cci} />
-                    </div>
-                    
-                    {/* Trend */}
-                    <div className="p-2 bg-black border border-[#1a1a1a]">
-                      <div className="flex items-center gap-1 mb-2 pb-1 border-b border-[#1a1a1a]">
-                        <TrendingUp className="h-3 w-3 text-[#00ff00]" />
-                        <span className="text-[9px] text-[#00ff00] uppercase font-mono">Trend</span>
-                      </div>
-                      <IndicatorRow label="MACD" value={data.indicators.trend.macd} />
-                      <IndicatorRow label="Signal" value={data.indicators.trend.macd_signal} />
-                      <IndicatorRow label="SMA 20" value={data.indicators.trend.sma_20} />
-                      <IndicatorRow label="SMA 50" value={data.indicators.trend.sma_50} />
-                      <IndicatorRow label="ADX" value={data.indicators.trend.adx} />
-                    </div>
-                    
-                    {/* Volatility */}
-                    <div className="p-2 bg-black border border-[#1a1a1a]">
-                      <div className="flex items-center gap-1 mb-2 pb-1 border-b border-[#1a1a1a]">
-                        <Gauge className="h-3 w-3 text-[#00ff00]" />
-                        <span className="text-[9px] text-[#00ff00] uppercase font-mono">Volatility</span>
-                      </div>
-                      <IndicatorRow label="BB Upper" value={data.indicators.volatility.bb_hband} />
-                      <IndicatorRow label="BB Mid" value={data.indicators.volatility.bb_mavg} />
-                      <IndicatorRow label="BB Lower" value={data.indicators.volatility.bb_lband} />
-                      <IndicatorRow label="ATR" value={data.indicators.volatility.atr} />
-                      <IndicatorRow label="BB %B" value={data.indicators.volatility.bb_pband} suffix="%" />
-                    </div>
-                    
-                    {/* Volume */}
-                    <div className="p-2 bg-black border border-[#1a1a1a]">
-                      <div className="flex items-center gap-1 mb-2 pb-1 border-b border-[#1a1a1a]">
-                        <Volume2 className="h-3 w-3 text-[#00ff00]" />
-                        <span className="text-[9px] text-[#00ff00] uppercase font-mono">Volume</span>
-                      </div>
-                      <IndicatorRow label="OBV" value={data.indicators.volume.obv} />
-                      <IndicatorRow label="VWAP" value={data.indicators.volume.vwap} />
-                      <IndicatorRow label="CMF" value={data.indicators.volume.cmf} />
+
+                {/* Latest Candle Stats Grid */}
+                <div className="md:col-span-4 space-y-2">
+                  <SectionHeader icon={Terminal} title="Latest Candle" />
+                  <div className="grid grid-cols-2 gap-[1px] bg-[#1a1a1a] border border-[#1a1a1a]">
+                    <DataCell label="Open" value={formatPrice(latestCandle?.open)} />
+                    <DataCell label="Close" value={formatPrice(latestCandle?.close)} />
+                    <DataCell label="High" value={formatPrice(latestCandle?.high)} />
+                    <DataCell label="Low" value={formatPrice(latestCandle?.low)} />
+                    <div className="col-span-2">
+                      <DataCell label="Volume" value={formatNumber(latestCandle?.volume, 0)} icon={Volume2} />
                     </div>
                   </div>
-                ) : (
-                  <div className="text-center py-3 text-[#006600] text-[10px] font-mono">
-                    No indicator data available
-                  </div>
-                )}
-              </div>
-              
-              {/* Divider */}
-              <div className="h-px bg-gradient-to-r from-transparent via-[#00ff00]/30 to-transparent" />
-              
-              {/* Sentiment Section - Only Token B (WETH.e / MOVE) */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Brain className="h-3 w-3 text-[#00ff00]" />
-                  <span className="text-[10px] text-[#006600] uppercase font-mono">
-                    Sentiment Analysis — {pool.tokens[1]}
-                  </span>
                 </div>
-                
-                {data.sentiment ? (
-                  <div className="space-y-3">
-                    {/* Main Sentiment Card */}
-                    <div className={`p-4 border ${getSentimentBg(data.sentiment.token_b.score)}`}>
-                      {/* Header with symbol and label */}
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <Sparkles className="h-4 w-4 text-[#00ff00]" />
-                          <span className="text-base font-bold font-mono text-[#00ff00]">
-                            {data.sentiment.token_b.symbol || pool.tokens[1]}
-                          </span>
+              </div>
+
+              {/* --- ZONE 2: TECHNICAL SYSTEMS --- */}
+              {data.indicators && (
+                <div>
+                   <SectionHeader icon={Cpu} title="Technical Systems" />
+                   
+                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      {/* Momentum Panel */}
+                      <div className="border border-[#1a1a1a] bg-[#0a0a0a] p-2">
+                        <div className="text-[9px] text-[#006600] mb-2 flex items-center gap-1 uppercase tracking-widest">
+                           <Zap className="h-3 w-3" /> Momentum
                         </div>
-                        <span className={`text-sm font-bold uppercase px-2 py-1 rounded ${getSentimentColor(data.sentiment.token_b.score)} bg-black/50`}>
-                          {data.sentiment.token_b.label}
-                        </span>
-                      </div>
-                      
-                      {/* Sentiment Score Bar */}
-                      <div className="mb-4">
-                        <div className="flex justify-between items-center mb-1">
-                          <span className="text-[10px] text-[#006600]">Sentiment Score</span>
-                          <span className={`text-sm font-bold ${getSentimentColor(data.sentiment.token_b.score)}`}>
-                            {data.sentiment.token_b.score >= 0 ? "+" : ""}{(data.sentiment.token_b.score * 100).toFixed(0)}%
-                          </span>
-                        </div>
-                        <div className="h-2 bg-[#1a1a1a] rounded overflow-hidden relative">
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <div className="w-px h-full bg-[#333]" />
+                        <div className="space-y-1">
+                          <DataCell label="RSI (14)" value={data.indicators.momentum.rsi?.toFixed(1)} color={getRSIColor(data.indicators.momentum.rsi)} />
+                          <div className="grid grid-cols-2 gap-1 mt-1">
+                            <DataCell label="Stoch" value={data.indicators.momentum.stoch?.toFixed(0)} subValue="%" />
+                            <DataCell label="MFI" value={data.indicators.momentum.mfi?.toFixed(0)} />
                           </div>
-                          <div
-                            className={`h-full transition-all duration-500 ${data.sentiment.token_b.score >= 0 ? "bg-[#00ff00] ml-[50%]" : "bg-[#ff3333] mr-[50%] ml-auto"}`}
-                            style={{ width: `${Math.abs(data.sentiment.token_b.score) * 50}%` }}
-                          />
                         </div>
                       </div>
-                      
-                      {/* Stats Grid */}
-                      <div className="grid grid-cols-2 gap-3 mb-4">
-                        <div className="p-2 bg-black border border-[#1a1a1a]">
-                          <div className="flex items-center gap-1 mb-1">
-                            <Target className="h-3 w-3 text-[#006600]" />
-                            <span className="text-[9px] text-[#006600]">Confidence</span>
-                          </div>
-                          <span className="text-base font-bold text-[#00ff00]">
-                            {(data.sentiment.token_b.confidence * 100).toFixed(0)}%
-                          </span>
+
+                      {/* Trend Panel */}
+                      <div className="border border-[#1a1a1a] bg-[#0a0a0a] p-2">
+                        <div className="text-[9px] text-[#006600] mb-2 flex items-center gap-1 uppercase tracking-widest">
+                           <TrendingUp className="h-3 w-3" /> Trend
                         </div>
-                        <div className="p-2 bg-black border border-[#1a1a1a]">
-                          <div className="flex items-center gap-1 mb-1">
-                            <Zap className="h-3 w-3 text-[#006600]" />
-                            <span className="text-[9px] text-[#006600]">Emotion</span>
+                        <div className="space-y-1">
+                          <DataCell label="MACD" value={data.indicators.trend.macd?.toFixed(4)} />
+                          <DataCell label="ADX" value={data.indicators.trend.adx?.toFixed(2)} />
+                          <div className="flex justify-between text-[9px] font-mono text-[#004400] pt-1 mt-1 border-t border-[#1a1a1a]">
+                             <span>MA20: {formatPrice(data.indicators.trend.sma_20)}</span>
                           </div>
-                          <span className="text-base font-bold text-[#ffaa00] capitalize">
-                            {data.sentiment.token_b.dominant_emotion}
-                          </span>
-                        </div>
-                        <div className="p-2 bg-black border border-[#1a1a1a]">
-                          <div className="flex items-center gap-1 mb-1">
-                            <Users className="h-3 w-3 text-[#006600]" />
-                            <span className="text-[9px] text-[#006600]">Social Volume</span>
-                          </div>
-                          <span className="text-base font-bold text-[#00ff00]">
-                            {(data.sentiment.token_b.social_volume || 0).toLocaleString()}
-                          </span>
-                        </div>
-                        <div className="p-2 bg-black border border-[#1a1a1a]">
-                          <div className="flex items-center gap-1 mb-1">
-                            <MessageCircle className="h-3 w-3 text-[#006600]" />
-                            <span className="text-[9px] text-[#006600]">Mentions (24h)</span>
-                          </div>
-                          <span className="text-base font-bold text-[#00ff00]">
-                            {(data.sentiment.token_b.mentions_24h || 0).toLocaleString()}
-                          </span>
                         </div>
                       </div>
-                      
-                      {/* Key Factors */}
-                      {data.sentiment.token_b.key_factors && data.sentiment.token_b.key_factors.length > 0 && (
-                        <div>
-                          <div className="flex items-center gap-1 mb-2">
-                            <BarChart3 className="h-3 w-3 text-[#006600]" />
-                            <span className="text-[9px] text-[#006600] uppercase">Key Factors</span>
+
+                      {/* Volatility Panel */}
+                      <div className="border border-[#1a1a1a] bg-[#0a0a0a] p-2">
+                        <div className="text-[9px] text-[#006600] mb-2 flex items-center gap-1 uppercase tracking-widest">
+                           <Gauge className="h-3 w-3" /> Volatility
+                        </div>
+                        <div className="space-y-1">
+                          <DataCell label="ATR" value={data.indicators.volatility.atr?.toFixed(4)} />
+                          <DataCell label="BB %B" value={data.indicators.volatility.bb_pband?.toFixed(2)} />
+                          <div className="flex justify-between text-[9px] font-mono text-[#004400] pt-1 mt-1 border-t border-[#1a1a1a]">
+                             <span>Width: {((data.indicators.volatility.bb_hband! - data.indicators.volatility.bb_lband!) / data.indicators.volatility.bb_mavg! * 100).toFixed(2)}%</span>
                           </div>
-                          <div className="space-y-1">
+                        </div>
+                      </div>
+
+                      {/* Volume Panel */}
+                      <div className="border border-[#1a1a1a] bg-[#0a0a0a] p-2">
+                        <div className="text-[9px] text-[#006600] mb-2 flex items-center gap-1 uppercase tracking-widest">
+                           <Activity className="h-3 w-3" /> Volume Flow
+                        </div>
+                        <div className="space-y-1">
+                           <DataCell 
+                              label="CMF" 
+                              value={data.indicators.volume.cmf?.toFixed(3)} 
+                              color={(data.indicators.volume.cmf || 0) > 0 ? "text-[#00ff00]" : "text-[#ff3333]"}
+                            />
+                           <DataCell label="VWAP" value={formatPrice(data.indicators.volume.vwap)} />
+                        </div>
+                      </div>
+                   </div>
+                </div>
+              )}
+
+              {/* --- ZONE 3: SENTIMENT MATRIX --- */}
+              {data.sentiment && (
+                <div className="relative">
+                  <SectionHeader icon={Brain} title={`Sentiment Matrix [${data.sentiment.token_b.symbol || "UNKNOWN"}]`} />
+                  
+                  {/* Decorative Background for Sentiment */}
+                  <div className={`absolute inset-0 border opacity-10 pointer-events-none ${data.sentiment.token_b.score > 0 ? 'border-[#00ff00] bg-[#00ff00]/5' : 'border-[#ff3333] bg-[#ff3333]/5'}`} />
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-2">
+                    
+                    {/* Hero Sentiment Score */}
+                    <div className="md:col-span-1 flex flex-col justify-center items-center bg-[#000] border border-[#1a1a1a] p-4 relative overflow-hidden">
+                       <Sparkles className={`h-8 w-8 mb-2 ${getSentimentColor(data.sentiment.token_b.score)}`} />
+                       <div className={`text-4xl font-bold font-mono tracking-tighter ${getSentimentColor(data.sentiment.token_b.score)}`}>
+                          {data.sentiment.token_b.score > 0 ? "+" : ""}{(data.sentiment.token_b.score * 100).toFixed(0)}
+                       </div>
+                       <div className="text-[10px] text-[#006600] uppercase tracking-widest mt-1">Social Score</div>
+                       
+                       <div className="mt-4 w-full">
+                          <div className="flex justify-between text-[9px] text-[#004400] mb-1">
+                             <span>BEAR</span>
+                             <span>BULL</span>
+                          </div>
+                          <div className="h-1.5 w-full bg-[#111] rounded-full overflow-hidden">
+                             <div 
+                                className={`h-full transition-all duration-700 ${data.sentiment.token_b.score > 0 ? "bg-[#00ff00]" : "bg-[#ff3333]"}`}
+                                style={{ 
+                                  width: `${Math.abs(data.sentiment.token_b.score) * 50}%`,
+                                  marginLeft: data.sentiment.token_b.score > 0 ? "50%" : `calc(50% - ${Math.abs(data.sentiment.token_b.score) * 50}%)`
+                                }}
+                             />
+                          </div>
+                       </div>
+                    </div>
+
+                    {/* Stats Grid */}
+                    <div className="md:col-span-2 grid grid-cols-2 gap-2">
+                       <DataCell 
+                          label="Confidence" 
+                          value={`${(data.sentiment.token_b.confidence * 100).toFixed(0)}%`} 
+                          icon={Target}
+                        />
+                       <DataCell 
+                          label="Dominant Emotion" 
+                          value={data.sentiment.token_b.dominant_emotion} 
+                          color="text-[#ffaa00] capitalize"
+                          icon={ScanLine}
+                        />
+                       <DataCell 
+                          label="Social Vol" 
+                          value={data.sentiment.token_b.social_volume?.toLocaleString()} 
+                          icon={Users}
+                        />
+                       <DataCell 
+                          label="Mentions (24h)" 
+                          value={data.sentiment.token_b.mentions_24h?.toLocaleString()} 
+                          icon={MessageCircle}
+                        />
+                       
+                       {/* Factors Ticker */}
+                       <div className="col-span-2 bg-[#050505] border border-[#1a1a1a] p-2 mt-1">
+                          <div className="text-[9px] text-[#006600] mb-1 flex items-center gap-1">
+                             <Target className="h-3 w-3" /> DRIVING FACTORS
+                          </div>
+                          <div className="flex flex-wrap gap-2">
                             {(Array.isArray(data.sentiment.token_b.key_factors) 
                               ? data.sentiment.token_b.key_factors 
                               : JSON.parse(data.sentiment.token_b.key_factors as unknown as string || '[]')
-                            ).map((factor: string, idx: number) => (
-                              <div 
-                                key={idx} 
-                                className="flex items-start gap-2 p-2 bg-black/50 border border-[#1a1a1a] text-[10px]"
-                              >
-                                <span className="text-[#00ff00] mt-0.5">▸</span>
-                                <span className="text-[#00cc00] font-mono">{factor}</span>
-                              </div>
+                            ).slice(0, 3).map((factor: string, idx: number) => (
+                               <span key={idx} className="text-[10px] text-[#00cc00] font-mono bg-[#00ff00]/10 px-2 py-0.5 rounded border border-[#00ff00]/20">
+                                  {factor}
+                               </span>
                             ))}
                           </div>
-                        </div>
-                      )}
+                       </div>
                     </div>
                   </div>
-                ) : (
-                  <div className="text-center py-4 text-[#006600] text-[10px] font-mono border border-[#1a1a1a] bg-black">
-                    No sentiment data available
-                  </div>
-                )}
-                
-                {data.sentiment?.analyzed_at && (
-                  <div className="text-[9px] text-[#004400] font-mono text-right">
-                    Last analyzed: {new Date(data.sentiment.analyzed_at).toLocaleString()}
-                  </div>
-                )}
-              </div>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -487,6 +465,8 @@ function PoolAnalyticsCard({ pool, data, onRefresh }: {
     </div>
   );
 }
+
+// --- Main Layout ---
 
 export function MarketAnalytics() {
   const [poolData, setPoolData] = useState<Record<string, PoolData>>({});
@@ -537,47 +517,56 @@ export function MarketAnalytics() {
   
   useEffect(() => {
     if (!autoRefresh) return;
-    
-    const interval = setInterval(fetchAllData, 60000); // Refresh every minute
+    const interval = setInterval(fetchAllData, 60000); 
     return () => clearInterval(interval);
   }, [autoRefresh, fetchAllData]);
   
   return (
-    <div className="space-y-6 font-mono">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="space-y-8 font-mono bg-black min-h-screen p-4 md:p-8">
+      
+      {/* Dashboard Header */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-[#1a1a1a] pb-6">
         <div>
-          <h1 className="text-2xl font-bold text-[#00ff00] glow-text">
-            ./market_analytics
+          <h1 className="text-3xl font-bold text-[#00ff00] tracking-tighter flex items-center gap-3">
+             <Terminal className="h-8 w-8" />
+             MARKET_ANALYTICS<span className="animate-pulse">_</span>
           </h1>
-          <p className="text-xs text-[#006600] mt-1">
-            {">"} Real-time OHLCV, Technical Indicators & Sentiment
+          <p className="text-xs text-[#006600] mt-2 font-mono flex items-center gap-2">
+            <span className="w-2 h-2 bg-[#00ff00] rounded-full inline-block" />
+            SYSTEM OPERATIONAL // REAL-TIME DATA STREAM
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <label className="flex items-center gap-2 cursor-pointer">
+        
+        <div className="flex items-center gap-4 bg-[#0a0a0a] p-2 border border-[#1a1a1a] rounded-sm">
+          <label className="flex items-center gap-2 cursor-pointer select-none group">
+            <div className={`w-3 h-3 border border-[#006600] flex items-center justify-center ${autoRefresh ? 'bg-[#00ff00]/20' : ''}`}>
+               {autoRefresh && <div className="w-1.5 h-1.5 bg-[#00ff00]" />}
+            </div>
             <input
               type="checkbox"
               checked={autoRefresh}
               onChange={(e) => setAutoRefresh(e.target.checked)}
-              className="accent-[#00ff00]"
+              className="hidden"
             />
-            <span className="text-[10px] text-[#006600]">Auto-refresh (1m)</span>
+            <span className="text-[10px] text-[#006600] group-hover:text-[#00ff00] transition-colors">AUTO_SYNC [60s]</span>
           </label>
+          
+          <div className="h-4 w-px bg-[#1a1a1a]" />
+          
           <Button
             onClick={fetchAllData}
-            variant="outline"
+            variant="ghost"
             size="sm"
-            className="border-[#00ff00] text-[#00ff00] hover:bg-[#00ff00]/10 font-mono text-xs"
+            className="h-6 text-[10px] border border-[#00ff00]/30 text-[#00ff00] hover:bg-[#00ff00]/10 hover:border-[#00ff00]"
           >
             <RefreshCw className="h-3 w-3 mr-2" />
-            REFRESH_ALL
+            FORCE_REFRESH
           </Button>
         </div>
       </div>
       
-      {/* Pool Cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* Grid Layout for Pools */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         {POOLS.map(pool => (
           <PoolAnalyticsCard
             key={pool.address}

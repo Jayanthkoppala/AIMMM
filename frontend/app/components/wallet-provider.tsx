@@ -29,7 +29,9 @@ export function WalletProvider({ children }: WalletProviderProps) {
     </AptosWalletAdapterProvider>
   );
 
-  if (!privyAppId) {
+  // If Privy App ID is not configured, skip Privy provider
+  // This prevents authentication errors when Privy is not set up
+  if (!privyAppId || privyAppId.trim() === "") {
     return aptosWrapper;
   }
   
@@ -37,14 +39,23 @@ export function WalletProvider({ children }: WalletProviderProps) {
     <PrivyProvider
       appId={privyAppId}
       config={{
-        loginMethods: ["email", "google", "twitter", "github"],
+        loginMethods: ["email", "google", "twitter", "github", "apple", "discord", "farcaster", "wallet"],
         appearance: {
           theme: "dark",
-          accentColor: "#1FAA68",
+          accentColor: "#00ff00",
         },
         embeddedWallets: {
           ethereum: {
-            createOnLogin: "users-without-wallets",
+            createOnLogin: "all-users",
+          },
+          solana: {
+            createOnLogin: "all-users",
+          },
+          showWalletUIs: true,
+        },
+        externalWallets: {
+          coinbaseWallet: {
+            config: {},
           },
         },
       }}

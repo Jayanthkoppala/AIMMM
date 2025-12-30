@@ -73,6 +73,9 @@ class Settings(BaseSettings):
     AUTONOMOUS_WALLET_ENCRYPTION_KEY: str = ""  # AES-256 key for encrypting private keys (generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
     AUTONOMOUS_TRADING_ENABLED: bool = True
     
+    # LangGraph Agent System
+    USE_LANGGRAPH_AGENTS: bool = True  # Enable new LangGraph agent-based execution
+    
     # CoinGecko API Limits
     COINGECKO_API_LIMIT_MONTHLY: int = 10000  # Monthly API call limit
     COINGECKO_API_LIMIT_PER_MINUTE: int = 30  # Rate limit: 30 requests per minute

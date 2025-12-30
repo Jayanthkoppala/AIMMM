@@ -9,6 +9,7 @@ from app.utils.database import db_connection
 from app.utils.logger import logger
 from app.config import settings
 from app.services import privy_service
+from app.services.user_service import user_service
 from app.services.strategy_executor import strategy_executor
 from app.services.strategy_scheduler import strategy_scheduler
 from app.services.paper_trading_dex import paper_trading_dex
@@ -28,45 +29,154 @@ from app.models.strategy import (
 router = APIRouter(prefix="/strategies", tags=["strategies"])
 
 
-async def get_authenticated_user(authorization: Optional[str]) -> tuple[str, str]:
+async def get_authenticated_user(
+    authorization: Optional[str] = Header(None),
+    wallet_address_header: Optional[str] = Header(None, alias="X-Wallet-Address")
+) -> tuple[str, str]:
     """
-    Verify Privy access token and return user_id and wallet_address.
+    Verify Privy access token or wallet/session and return user UUID and wallet_address.
+    Creates or retrieves user from users table.
     Raises HTTPException if authentication fails.
     
-    For development: If Privy is not configured, uses a test user.
+    Returns:
+        tuple: (user_id as UUID string, wallet_address)
     """
-    if not authorization or not authorization.startswith("Bearer "):
-        # Development mode: check if Privy is configured
-        if not settings.PRIVY_APP_ID or not settings.PRIVY_APP_SECRET:
-            logger.warning("Privy not configured - using test user for development")
-            return "test-user-123", "0x0000000000000000000000000000000000000000000000000000000000000000"
-        raise HTTPException(status_code=401, detail="Authorization header required")
+    user_identifier = None
+    privy_user_id = None
+    email = None
+    wallet_address = None
+    session_id = None
+    auth_method = "session"
+    privy_user = None
     
-    access_token = authorization.replace("Bearer ", "")
+    # Try Privy authentication first if token is provided
+    if authorization and authorization.startswith("Bearer "):
+        access_token = authorization.replace("Bearer ", "")
+        
+        # Try to verify with Privy
+        privy_user = await privy_service.privy_service.verify_access_token(access_token)
+        
+        if privy_user:
+            privy_user_id = privy_user.get('id')
+            
+            # Extract wallet address from linked_accounts if available
+            wallet_address = None
+            linked_accounts = privy_user.get('linked_accounts', [])
+            for account in linked_accounts:
+                if account.get('type') == 'wallet':
+                    wallet_address = account.get('address')
+                    break
+            
+            # Fallback to direct wallet field
+            if not wallet_address and privy_user.get('wallet'):
+                wallet_address = privy_user.get('wallet', {}).get('address', '')
+            
+            # Extract email from Privy user data
+            # Privy returns email in linked_accounts
+            email = None
+            for account in linked_accounts:
+                if account.get('type') == 'email':
+                    email = account.get('address')
+                    break
+            
+            # Fallback: check other possible locations
+            if not email:
+                if privy_user.get('email'):
+                    email_obj = privy_user.get('email')
+                    email = email_obj.get('address') if isinstance(email_obj, dict) else email_obj
+                elif privy_user.get('google', {}).get('email'):
+                    email = privy_user.get('google', {}).get('email')
+                elif privy_user.get('apple', {}).get('email'):
+                    email = privy_user.get('apple', {}).get('email')
+            
+            # Only use Privy if we got a valid user ID
+            if privy_user_id:
+                user_identifier = privy_user_id
+                auth_method = "privy"
+                logger.info(f"Privy authentication successful: {privy_user_id} (email: {email or 'none'}, wallet: {wallet_address or 'none'})")
+                logger.debug(f"Privy user data keys: {list(privy_user.keys())}")
+            else:
+                logger.warning("Privy returned user but no user ID, falling back to wallet/session")
+        else:
+            logger.warning("Privy authentication failed, falling back to wallet/session")
     
-    # Try to verify with Privy
-    privy_user = await privy_service.privy_service.verify_access_token(access_token)
+    # Fallback: Use wallet address or session ID when Privy is not configured or failed
+    if not user_identifier:
+        # Always try to get wallet address or session ID from header first (works even if Privy is configured)
+        if wallet_address_header:
+            identifier = wallet_address_header.strip()
+            # Check if it's a session ID (starts with "session-") or a wallet address
+            if identifier.startswith("session-"):
+                # It's a session ID from frontend
+                session_id = identifier
+                user_identifier = session_id
+                wallet_address = None  # Will be updated when wallet connects
+                auth_method = "session"
+                logger.info(f"Using session-based authentication: {session_id}")
+                # Try to find existing user by session, and update wallet if provided later
+            else:
+                # It's a wallet address - prioritize wallet over session
+                wallet_address = identifier.lower()
+                # First try to find user by wallet address
+                existing_wallet_user = user_service.get_user_by_wallet_address(wallet_address)
+                if existing_wallet_user:
+                    # User exists with this wallet, use their identifier
+                    user_identifier = existing_wallet_user['user_identifier']
+                    logger.info(f"Found existing user by wallet: {existing_wallet_user['id']}")
+                else:
+                    # New wallet, create identifier
+                    user_identifier = f"wallet-{wallet_address}"
+                auth_method = "wallet"
+                logger.info(f"Using wallet-based authentication: {wallet_address}")
+        elif not settings.PRIVY_APP_ID or not settings.PRIVY_APP_SECRET:
+            # No identifier provided and Privy not configured - use a session-based fallback for development
+            logger.warning("Privy not configured and no wallet address/session ID provided - using session fallback")
+            session_id = "session-fallback"
+            user_identifier = session_id
+            wallet_address = "0x0000000000000000000000000000000000000000000000000000000000000000"
+            auth_method = "session"
+        else:
+            # Privy is configured but authentication failed and no wallet/session provided
+            if authorization and authorization.startswith("Bearer "):
+                raise HTTPException(status_code=401, detail="Invalid access token. Please provide X-Wallet-Address header as fallback")
+            else:
+                raise HTTPException(status_code=401, detail="Authorization header or X-Wallet-Address required")
     
-    if not privy_user:
-        # Development mode fallback
-        if not settings.PRIVY_APP_ID or not settings.PRIVY_APP_SECRET:
-            logger.warning("Privy verification failed - using test user for development")
-            return "test-user-123", "0x0000000000000000000000000000000000000000000000000000000000000000"
-        raise HTTPException(status_code=401, detail="Invalid access token")
+    # Ensure we have a user_identifier before trying to create user
+    if not user_identifier:
+        logger.error("No user identifier available for authentication")
+        raise HTTPException(status_code=401, detail="Unable to identify user")
     
-    user_id = privy_user.get('id')
-    wallet_address = privy_user.get('wallet', {}).get('address', '')
+    # Get or create user in database
+    user = user_service.get_or_create_user(
+        user_identifier=user_identifier,
+        privy_user_id=privy_user_id,
+        email=email,
+        wallet_address=wallet_address,
+        session_id=session_id,
+        auth_method=auth_method
+    )
     
-    return user_id, wallet_address
+    if not user:
+        logger.error(f"Failed to get or create user with identifier: {user_identifier}")
+        raise HTTPException(status_code=500, detail="Failed to authenticate user")
+    
+    logger.info(f"Authenticated user: {user['id']} (identifier: {user_identifier}, method: {auth_method})")
+    
+    # Return UUID as string and wallet address
+    return str(user['id']), wallet_address or ""
 
 
 @router.post("")
 async def create_strategy(
     request: CreateStrategyRequest,
-    authorization: Optional[str] = Header(None)
+    authorization: Optional[str] = Header(None),
+    wallet_address_header: Optional[str] = Header(None, alias="X-Wallet-Address")
 ):
     """Create a new trading strategy"""
-    user_id, wallet_address = await get_authenticated_user(authorization)
+    user_id, wallet_address = await get_authenticated_user(authorization, wallet_address_header)
+    
+    logger.info(f"Creating strategy for user_id: {user_id}, name: {request.name}")
     
     try:
         # Convert strategy config to JSON
@@ -79,7 +189,7 @@ async def create_strategy(
             INSERT INTO user_strategies (
                 user_id, wallet_address, name, description, visibility, pool_id, pool_address, execution_interval, strategy_config
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+            VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
             RETURNING id, created_at, updated_at
         """
         
@@ -123,17 +233,20 @@ async def create_strategy(
 @router.get("")
 async def get_strategies(
     authorization: Optional[str] = Header(None),
+    wallet_address_header: Optional[str] = Header(None, alias="X-Wallet-Address"),
     visibility: Optional[str] = Query(None),
     is_active: Optional[bool] = Query(None),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0)
 ):
     """List user's strategies"""
-    user_id, _ = await get_authenticated_user(authorization)
+    user_id, _ = await get_authenticated_user(authorization, wallet_address_header)
+    
+    logger.info(f"Fetching strategies for user_id: {user_id}")
     
     try:
         # Build query with filters
-        conditions = ["user_id = %s"]
+        conditions = ["user_id = %s::uuid"]
         params = [user_id]
         
         if visibility:
@@ -157,6 +270,8 @@ async def get_strategies(
         
         results = db_connection.execute_query(query, tuple(params), fetch_all=True)
         
+        logger.info(f"Found {len(results or [])} strategies for user_id: {user_id}")
+        
         return {
             "strategies": results or [],
             "count": len(results or []),
@@ -165,23 +280,24 @@ async def get_strategies(
         }
         
     except Exception as e:
-        logger.error(f"Error fetching strategies: {e}", exc_info=True)
+        logger.error(f"Error fetching strategies for user_id {user_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{strategy_id}")
 async def get_strategy(
     strategy_id: str,
-    authorization: Optional[str] = Header(None)
+    authorization: Optional[str] = Header(None),
+    wallet_address: Optional[str] = Header(None, alias="X-Wallet-Address")
 ):
     """Get a specific strategy"""
-    user_id, _ = await get_authenticated_user(authorization)
+    user_id, _ = await get_authenticated_user(authorization, wallet_address)
     
     try:
         query = """
             SELECT *
             FROM user_strategies
-            WHERE id = %s AND user_id = %s
+            WHERE id = %s::uuid AND user_id = %s::uuid
         """
         
         result = db_connection.execute_query(query, (strategy_id, user_id), fetch_one=True)
@@ -202,10 +318,11 @@ async def get_strategy(
 async def update_strategy(
     strategy_id: str,
     request: UpdateStrategyRequest,
-    authorization: Optional[str] = Header(None)
+    authorization: Optional[str] = Header(None),
+    wallet_address: Optional[str] = Header(None, alias="X-Wallet-Address")
 ):
     """Update a strategy"""
-    user_id, _ = await get_authenticated_user(authorization)
+    user_id, _ = await get_authenticated_user(authorization, wallet_address)
     
     try:
         # Build update query dynamically
@@ -244,7 +361,7 @@ async def update_strategy(
         query = f"""
             UPDATE user_strategies
             SET {", ".join(updates)}
-            WHERE id = %s AND user_id = %s
+            WHERE id = %s::uuid AND user_id = %s::uuid
             RETURNING *
         """
         params.extend([strategy_id, user_id])
@@ -266,15 +383,16 @@ async def update_strategy(
 @router.delete("/{strategy_id}")
 async def delete_strategy(
     strategy_id: str,
-    authorization: Optional[str] = Header(None)
+    authorization: Optional[str] = Header(None),
+    wallet_address: Optional[str] = Header(None, alias="X-Wallet-Address")
 ):
     """Delete a strategy"""
-    user_id, _ = await get_authenticated_user(authorization)
+    user_id, _ = await get_authenticated_user(authorization, wallet_address)
     
     try:
         query = """
             DELETE FROM user_strategies
-            WHERE id = %s AND user_id = %s
+            WHERE id = %s::uuid AND user_id = %s::uuid
             RETURNING id
         """
         
@@ -296,10 +414,11 @@ async def delete_strategy(
 async def execute_strategy_endpoint(
     strategy_id: str,
     request: ExecuteStrategyRequest,
-    authorization: Optional[str] = Header(None)
+    authorization: Optional[str] = Header(None),
+    wallet_address: Optional[str] = Header(None, alias="X-Wallet-Address")
 ):
     """Manually execute a strategy"""
-    user_id, _ = await get_authenticated_user(authorization)
+    user_id, _ = await get_authenticated_user(authorization, wallet_address)
     
     try:
         result = await strategy_executor.execute_strategy(
@@ -319,16 +438,17 @@ async def execute_strategy_endpoint(
 async def get_trading_state(
     strategy_id: str,
     authorization: Optional[str] = Header(None),
+    wallet_address: Optional[str] = Header(None, alias="X-Wallet-Address"),
     include_closed: bool = Query(False)
 ):
     """Get current trading state for a strategy"""
-    user_id, _ = await get_authenticated_user(authorization)
+    user_id, _ = await get_authenticated_user(authorization, wallet_address)
     
     try:
         # Verify strategy ownership
         strategy_query = """
             SELECT id FROM user_strategies
-            WHERE id = %s AND user_id = %s
+            WHERE id = %s::uuid AND user_id = %s::uuid
         """
         strategy = db_connection.execute_query(strategy_query, (strategy_id, user_id), fetch_one=True)
         
@@ -382,18 +502,19 @@ async def get_trading_state(
 async def get_executions(
     strategy_id: str,
     authorization: Optional[str] = Header(None),
+    wallet_address: Optional[str] = Header(None, alias="X-Wallet-Address"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     include_market_data: bool = Query(False)
 ):
     """Get execution history for a strategy"""
-    user_id, _ = await get_authenticated_user(authorization)
+    user_id, _ = await get_authenticated_user(authorization, wallet_address)
     
     try:
         # Verify strategy ownership
         strategy_query = """
             SELECT id FROM user_strategies
-            WHERE id = %s AND user_id = %s
+            WHERE id = %s::uuid AND user_id = %s::uuid
         """
         strategy = db_connection.execute_query(strategy_query, (strategy_id, user_id), fetch_one=True)
         
@@ -443,16 +564,17 @@ async def get_executions(
 @router.get("/{strategy_id}/statistics")
 async def get_trade_statistics(
     strategy_id: str,
-    authorization: Optional[str] = Header(None)
+    authorization: Optional[str] = Header(None),
+    wallet_address: Optional[str] = Header(None, alias="X-Wallet-Address")
 ):
     """Get trading performance statistics for a strategy"""
-    user_id, _ = await get_authenticated_user(authorization)
+    user_id, _ = await get_authenticated_user(authorization, wallet_address)
     
     try:
         # Verify strategy ownership
         strategy_query = """
             SELECT id FROM user_strategies
-            WHERE id = %s AND user_id = %s
+            WHERE id = %s::uuid AND user_id = %s::uuid
         """
         strategy = db_connection.execute_query(strategy_query, (strategy_id, user_id), fetch_one=True)
         
@@ -478,10 +600,11 @@ async def get_trade_statistics(
 async def activate_strategy(
     strategy_id: str,
     request: ActivateStrategyRequest,
-    authorization: Optional[str] = Header(None)
+    authorization: Optional[str] = Header(None),
+    wallet_address: Optional[str] = Header(None, alias="X-Wallet-Address")
 ):
     """Activate automated execution for a strategy"""
-    user_id, _ = await get_authenticated_user(authorization)
+    user_id, _ = await get_authenticated_user(authorization, wallet_address)
     
     try:
         query = """
@@ -489,7 +612,7 @@ async def activate_strategy(
             SET is_active = TRUE,
                 execution_interval = %s,
                 updated_at = NOW()
-            WHERE id = %s AND user_id = %s
+            WHERE id = %s::uuid AND user_id = %s::uuid
             RETURNING id, is_active, execution_interval
         """
         
@@ -520,17 +643,18 @@ async def activate_strategy(
 @router.post("/{strategy_id}/deactivate")
 async def deactivate_strategy(
     strategy_id: str,
-    authorization: Optional[str] = Header(None)
+    authorization: Optional[str] = Header(None),
+    wallet_address: Optional[str] = Header(None, alias="X-Wallet-Address")
 ):
     """Deactivate automated execution for a strategy"""
-    user_id, _ = await get_authenticated_user(authorization)
+    user_id, _ = await get_authenticated_user(authorization, wallet_address)
     
     try:
         query = """
             UPDATE user_strategies
             SET is_active = FALSE,
                 updated_at = NOW()
-            WHERE id = %s AND user_id = %s
+            WHERE id = %s::uuid AND user_id = %s::uuid
             RETURNING id, is_active
         """
         
@@ -556,17 +680,18 @@ async def deactivate_strategy(
 async def get_executions_as_messages(
     strategy_id: str,
     authorization: Optional[str] = Header(None),
+    wallet_address: Optional[str] = Header(None, alias="X-Wallet-Address"),
     limit: int = Query(10, ge=1, le=50),
     offset: int = Query(0, ge=0)
 ):
     """Get executions formatted as chat-style messages"""
-    user_id, _ = await get_authenticated_user(authorization)
+    user_id, _ = await get_authenticated_user(authorization, wallet_address)
     
     try:
         # Verify strategy ownership
         strategy_query = """
             SELECT id, name FROM user_strategies
-            WHERE id = %s AND user_id = %s
+            WHERE id = %s::uuid AND user_id = %s::uuid
         """
         strategy = db_connection.execute_query(strategy_query, (strategy_id, user_id), fetch_one=True)
         

@@ -1,6 +1,6 @@
 # Frontend
 
-Next.js frontend for AI Trading Agent application.
+Next.js frontend for AIMMM application.
 
 ## Setup
 

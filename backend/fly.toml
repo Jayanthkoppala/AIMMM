@@ -1,7 +1,7 @@
 # Fly.io configuration for backend
 # Run: fly launch (first time) or fly deploy
 
-app = "ai-trading-agent-backend"
+app = "aimmm-backend"
 primary_region = "iad"  # Change to your preferred region
 
 [build]

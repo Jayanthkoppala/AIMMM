@@ -1,6 +1,7 @@
 """
 Strategy Executor - Core execution engine for DEX spot trading strategies
 Orchestrates market data gathering, LLM decisions, and Mosaic swaps
+Supports both legacy execution and new LangGraph agent-based execution
 """
 import time
 from typing import Dict, Any, Optional
@@ -8,6 +9,7 @@ from decimal import Decimal
 from datetime import datetime, timezone
 from app.utils.database import db_connection
 from app.utils.logger import logger
+from app.config import settings
 from app.services import mosaic, llm, risk_management, oracle
 from app.services.paper_trading_dex import paper_trading_dex
 from app.services.ohlcv import ohlcv_service
@@ -40,6 +42,15 @@ class StrategyExecutor:
         logger.info(f"=" * 80)
         logger.info(f"[Strategy Execution] Starting execution for strategy_id: {strategy_id}")
         logger.info(f"[Strategy Execution] Execution mode: {execution_mode}")
+        
+        # Check if LangGraph agents are enabled
+        if settings.USE_LANGGRAPH_AGENTS:
+            logger.info(f"[Strategy Execution] Using LangGraph agent system")
+            logger.info(f"=" * 80)
+            return await self._execute_with_langgraph(strategy_id, user_id, execution_mode)
+        else:
+            logger.info(f"[Strategy Execution] Using legacy execution system")
+        
         logger.info(f"=" * 80)
         
         try:
@@ -55,8 +66,11 @@ class StrategyExecutor:
             
             strategy_config = strategy.get('strategy_config', {})
             strategy_name = strategy.get('name', 'Unknown')
+            strategy_description = strategy.get('description', '')
             pool_id = strategy.get('pool_id')
             logger.info(f"[Strategy Execution] Strategy loaded: '{strategy_name}' (id: {strategy_id}, pool_id: {pool_id})")
+            if strategy_description:
+                logger.info(f"[Strategy Execution] Strategy description: {strategy_description[:100]}...")
             
             # Get pool info early for exit signals check
             pool_address = None
@@ -152,6 +166,7 @@ class StrategyExecutor:
                 portfolio_state=portfolio_state,
                 market_data=market_data,
                 strategy_config=strategy_config,
+                strategy_description=strategy_description,  # Pass user's strategy description
                 llm_model=strategy_config.get('llm_provider')
             )
             
@@ -176,6 +191,7 @@ class StrategyExecutor:
             
             # 9. Enforce safety rules
             decision = await self._enforce_safety_rules(
+                strategy_id,
                 decision,
                 portfolio_state,
                 strategy_config
@@ -251,6 +267,92 @@ class StrategyExecutor:
                 "duration": time.time() - start_time
             }
     
+    async def _execute_with_langgraph(
+        self,
+        strategy_id: str,
+        user_id: str,
+        execution_mode: str = "analysis"
+    ) -> Dict[str, Any]:
+        """
+        Execute strategy using LangGraph agent system.
+        
+        Args:
+            strategy_id: Strategy UUID
+            user_id: User ID
+            execution_mode: "analysis" or "trade"
+        
+        Returns:
+            Execution result from LangGraph workflow
+        """
+        try:
+            # Import the trading graph
+            from app.agents.trading_graph import execute_trading_strategy
+            
+            # Fetch strategy config
+            strategy = await self._get_strategy(strategy_id, user_id)
+            if not strategy:
+                logger.error(f"Strategy not found: {strategy_id}")
+                return {
+                    "status": "error",
+                    "error": "Strategy not found"
+                }
+            
+            strategy_config = strategy.get('strategy_config', {})
+            strategy_description = strategy.get('description', '')
+            pool_id = strategy.get('pool_id')
+            pool_address = strategy.get('pool_address')
+            
+            logger.info(f"[LangGraph] Executing strategy: {strategy.get('name')} (pool_id: {pool_id})")
+            
+            # Execute through LangGraph workflow
+            result = await execute_trading_strategy(
+                strategy_id=strategy_id,
+                user_id=user_id,
+                strategy_config=strategy_config,
+                execution_mode=execution_mode,
+                pool_id=pool_id,
+                pool_address=pool_address,
+                strategy_description=strategy_description
+            )
+            
+            # Log execution to database (if successful)
+            if result.get('status') == 'success':
+                execution_id = await self._log_execution(
+                    strategy_id=strategy_id,
+                    user_id=user_id,
+                    decision=result.get('decision', {}),
+                    trade_result=result.get('trade_result'),  # Use actual trade result dict or None
+                    market_data=result.get('market_data', {}),  # Use actual market data
+                    execution_mode=execution_mode,
+                    duration=result.get('duration', 0),
+                    llm_model=strategy_config.get('llm_provider', 'openai/gpt-4o-mini')
+                )
+                result['execution_id'] = execution_id
+                
+                logger.info(f"[LangGraph] Execution logged to database: {execution_id}")
+                
+                # Calculate and log statistics (async, don't block)
+                try:
+                    from app.services.paper_trading_dex import paper_trading_dex
+                    stats = await paper_trading_dex.get_trade_statistics(strategy_id)
+                    logger.info(f"[LangGraph] Statistics updated: {stats.get('total_trades', 0)} trades, "
+                              f"P&L: {stats.get('total_pnl', 0):.2f}%")
+                except Exception as e:
+                    logger.warning(f"[LangGraph] Error calculating statistics: {e}")
+            
+            # Update last_execution timestamp
+            await self._update_last_execution(strategy_id)
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error in LangGraph execution: {e}", exc_info=True)
+            return {
+                "status": "error",
+                "error": str(e),
+                "duration": time.time() - time.time()
+            }
+    
     async def _get_strategy(self, strategy_id: str, user_id: str) -> Optional[Dict[str, Any]]:
         """Fetch strategy from database"""
         try:
@@ -298,18 +400,40 @@ class StrategyExecutor:
                         
                         # IMPORTANT: Trading token should be the NON-USDC token
                         # We always trade token vs USDC, so pick the non-stablecoin
-                        stablecoins = {'USDC', 'USDC.e', 'USDT', 'DAI'}
-                        if token_a_sym.upper() in stablecoins and token_b_sym.upper() not in stablecoins:
+                        # Normalize stablecoin set to handle case variations (.e, .E, etc.)
+                        stablecoins_normalized = {'USDC', 'USDC.E', 'USDC.e', 'USDT', 'DAI'}
+                        
+                        # Normalize token symbols for comparison (handle .e/.E variations)
+                        def normalize_token(symbol: str) -> str:
+                            """Normalize token symbol for comparison"""
+                            if not symbol:
+                                return ''
+                            normalized = symbol.upper()
+                            # Handle .e/.E variations
+                            normalized = normalized.replace('.E', '.E')  # Already uppercase
+                            return normalized
+                        
+                        token_a_norm = normalize_token(token_a_sym)
+                        token_b_norm = normalize_token(token_b_sym)
+                        
+                        if token_a_norm in stablecoins_normalized and token_b_norm not in stablecoins_normalized:
                             # token_a is stablecoin, use token_b as trading token
                             token_symbol = token_b_sym
                             logger.info(f"[Market Data Gathering] token_a ({token_a_sym}) is stablecoin, using token_b ({token_b_sym}) as trading token")
-                        elif token_b_sym.upper() in stablecoins and token_a_sym.upper() not in stablecoins:
+                        elif token_b_norm in stablecoins_normalized and token_a_norm not in stablecoins_normalized:
                             # token_b is stablecoin, use token_a as trading token
                             token_symbol = token_a_sym
                             logger.info(f"[Market Data Gathering] token_b ({token_b_sym}) is stablecoin, using token_a ({token_a_sym}) as trading token")
                         else:
-                            # Neither or both are stablecoins - use token_a as default
-                            token_symbol = token_a_sym or 'MOVE'
+                            # Neither or both are stablecoins - try to pick the non-stablecoin
+                            # If both are stablecoins or neither, default to token_a (or first non-stablecoin)
+                            if token_a_norm not in stablecoins_normalized:
+                                token_symbol = token_a_sym
+                            elif token_b_norm not in stablecoins_normalized:
+                                token_symbol = token_b_sym
+                            else:
+                                # Both are stablecoins (shouldn't happen, but fallback)
+                                token_symbol = token_a_sym or 'MOVE'
                             logger.warning(f"[Market Data Gathering] Could not determine trading token from {token_a_sym}/{token_b_sym}, using {token_symbol}")
                         
                         logger.info(f"[Market Data Gathering] Pool info retrieved: {token_a_sym}/{token_b_sym} - Trading token: {token_symbol} (address: {pool_address[:20]}...)")
@@ -453,6 +577,7 @@ class StrategyExecutor:
     
     async def _enforce_safety_rules(
         self,
+        strategy_id: str,
         decision: Dict[str, Any],
         portfolio_state: Dict[str, Any],
         strategy_config: Dict[str, Any]
@@ -470,16 +595,41 @@ class StrategyExecutor:
                 return decision
             
             # Rule 2: Check position limits
+            # Use database query for accurate count (more reliable than portfolio_state balances)
             paper_config = strategy_config.get('paper_trading_config', {})
             max_positions = paper_config.get('max_concurrent_positions', 5)
-            active_positions = portfolio_state.get('balances', [])
-            active_count = sum(1 for b in active_positions if b['token_symbol'] != 'USDC' and b['balance'] > 0)
             
-            if action == 'BUY' and active_count >= max_positions:
-                logger.info(f"Max positions ({max_positions}) reached, forcing HOLD")
-                decision['action'] = 'HOLD'
-                decision['reasoning'] = f"Max positions limit reached ({active_count}/{max_positions}). " + decision.get('reasoning', '')
-                return decision
+            # Get portfolio balances for both position counting and USDC balance lookup
+            active_positions = portfolio_state.get('balances', [])
+            
+            # Get active positions count directly from database (most accurate)
+            try:
+                active_count = await paper_trading_dex.get_active_positions_count(strategy_id)
+                logger.info(
+                    f"[Safety Rules] Position check (from DB): {active_count}/{max_positions} positions active"
+                )
+            except Exception as e:
+                logger.error(f"[Safety Rules] Error querying active positions from DB: {e}")
+                # Fallback to portfolio_state if DB query fails
+                active_count = sum(1 for b in active_positions if b['token_symbol'] != 'USDC' and b['balance'] > 0)
+                logger.warning(
+                    f"[Safety Rules] Using fallback count from portfolio_state: {active_count}/{max_positions}"
+                )
+            
+            if action == 'BUY':
+                if active_count >= max_positions:
+                    logger.warning(
+                        f"[Safety Rules] BLOCKED: Max positions limit reached ({active_count}/{max_positions}). "
+                        f"Changing action from BUY to HOLD."
+                    )
+                    decision['action'] = 'HOLD'
+                    decision['reasoning'] = f"Max positions limit reached ({active_count}/{max_positions}). " + decision.get('reasoning', '')
+                    return decision
+                else:
+                    logger.info(
+                        f"[Safety Rules] BUY allowed: {active_count}/{max_positions} positions "
+                        f"(limit not reached, will double-check in _execute_trade)"
+                    )
             
             # Rule 3: Check available capital
             usdc_balance = next((b['balance'] for b in active_positions if b['token_symbol'] == 'USDC'), 0)
@@ -532,6 +682,54 @@ class StrategyExecutor:
                 return None
             
             if action == 'BUY':
+                # CRITICAL: Double-check max_concurrent_positions before executing BUY
+                # This is a safeguard in case _enforce_safety_rules didn't catch it
+                try:
+                    # Get strategy config to check max positions
+                    strategy_query = """
+                        SELECT strategy_config
+                        FROM user_strategies
+                        WHERE id = %s
+                    """
+                    strategy_result = db_connection.execute_query(
+                        strategy_query,
+                        (strategy_id,),
+                        fetch_one=True
+                    )
+                    
+                    if strategy_result and strategy_result.get('strategy_config'):
+                        strategy_config = strategy_result.get('strategy_config')
+                        paper_config = strategy_config.get('paper_trading_config', {})
+                        max_positions = paper_config.get('max_concurrent_positions', 5)
+                        
+                        # Get current active positions count from database (most accurate)
+                        active_count = await paper_trading_dex.get_active_positions_count(strategy_id)
+                        
+                        # Check if we're about to create a new position
+                        # If we already have this token, it's not a new position
+                        token_balance = await paper_trading_dex.get_balance(
+                            strategy_id,
+                            paper_trading_dex.get_token_address(token),
+                            token
+                        )
+                        is_new_position = token_balance <= 0
+                        
+                        if is_new_position and active_count >= max_positions:
+                            logger.warning(
+                                f"[Trade Safety] BLOCKED BUY: Max positions limit reached "
+                                f"({active_count}/{max_positions}). Cannot open new {token} position."
+                            )
+                            return None
+                        elif active_count >= max_positions:
+                            logger.info(
+                                f"[Trade Safety] Allowing BUY: {active_count}/{max_positions} positions, "
+                                f"but {token} position already exists (not a new position)"
+                            )
+                except Exception as e:
+                    logger.error(f"[Trade Safety] Error checking max positions before BUY: {e}")
+                    # Don't block the trade if check fails, but log the error
+                
+                # Buy token with USDC
                 # Buy token with USDC
                 # Get the destination token address dynamically
                 dst_token_address = paper_trading_dex.get_token_address(token)
@@ -557,7 +755,14 @@ class StrategyExecutor:
                 dst_amount = Decimal(str(dst_amount_units)) / Decimal('100000000')  # Most tokens have 8 decimals
                 
                 # Calculate effective price (USDC per token)
+                # This is the price at which we're buying the token
                 price = src_amount / dst_amount if dst_amount > 0 else Decimal('0')
+                
+                logger.debug(
+                    f"[Strategy Executor] Price calculation: "
+                    f"src_amount={src_amount} USDC, dst_amount={dst_amount} {token}, "
+                    f"price={price} USDC per {token}"
+                )
                 
                 # Calculate slippage from quote
                 # Mosaic quote already includes slippage in the output amount
@@ -573,9 +778,26 @@ class StrategyExecutor:
                 # For paper trading, we'll use a conservative estimate
                 gas_fee_usd = 0.002  # ~$0.002 per swap (can be adjusted based on actual gas costs)
                 
+                # Validate price calculation
+                if price <= 0:
+                    logger.error(
+                        f"[Strategy Executor] Invalid price calculated: {price} "
+                        f"(src_amount={src_amount}, dst_amount={dst_amount})"
+                    )
+                    return None
+                
+                # Price should be reasonable for the token (WETH.e ~$2900, MOVE varies)
+                # If price is less than $1, something is wrong
+                if price < Decimal('1.0') and token not in ['USDC', 'USDT', 'DAI']:
+                    logger.error(
+                        f"[Strategy Executor] Price {price} seems too low for {token}. "
+                        f"Check if src_amount and dst_amount are in correct order/units."
+                    )
+                    return None
+                
                 logger.info(
                     f"[Paper Trading] Simulating swap: {src_amount} USDC -> {dst_amount} {token} "
-                    f"(price: ${price:.6f}, slippage: {slippage_pct or 'N/A'}%, gas: ${gas_fee_usd:.4f})"
+                    f"(price: ${price:.6f} per {token}, slippage: {slippage_pct or 'N/A'}%, gas: ${gas_fee_usd:.4f})"
                 )
                 
                 # Execute paper swap (simulated - updates database only)

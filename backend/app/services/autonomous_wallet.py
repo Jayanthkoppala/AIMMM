@@ -324,3 +324,5 @@ class AutonomousWalletService:
 # Create singleton instance
 autonomous_wallet_service = AutonomousWalletService()
 
+
+

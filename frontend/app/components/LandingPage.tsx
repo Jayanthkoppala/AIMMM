@@ -10,233 +10,284 @@ import {
   Database,
   Zap,
   Lock,
-  TrendingUp
+  TrendingUp,
+  Power,
+  ShieldCheck,
+  Globe,
+  Server,
+  Play
 } from "lucide-react";
 
-const features = [
+// --- Data Config ---
+
+const systemProcesses = [
   {
+    pid: "8021",
     icon: Cpu,
-    command: "ai.analyze()",
-    title: "Neural Analysis",
-    description: "LLM-powered decision engine with real-time pattern recognition",
+    name: "NEURAL_ENGINE",
+    cmd: "ai.analyze()",
+    status: "RUNNING",
+    desc: "Real-time pattern recognition",
+    load: "89%"
   },
   {
+    pid: "4402",
     icon: Activity,
-    command: "data.stream()",
-    title: "Live Data Feed",
-    description: "OHLCV streams at 1-min intervals with 70+ indicators",
+    name: "DATA_INGEST",
+    cmd: "data.stream()",
+    status: "ACTIVE",
+    desc: "OHLCV 1m interval stream",
+    load: "12%"
   },
   {
+    pid: "1190",
     icon: Database,
-    command: "sentiment.scan()",
-    title: "Sentiment Parser",
-    description: "Multi-source social sentiment aggregation and scoring",
+    name: "SENTIMENT_SCAN",
+    cmd: "sentiment.scan()",
+    status: "LISTENING",
+    desc: "Social aggregation parser",
+    load: "45%"
   },
   {
+    pid: "3321",
     icon: TrendingUp,
-    command: "indicators.calc()",
-    title: "Tech Analysis",
-    description: "RSI, MACD, Bollinger Bands, Volume Profile, and more",
+    name: "TECH_ANALYSIS",
+    cmd: "indicators.calc()",
+    status: "COMPUTING",
+    desc: "RSI, MACD, BB, Vol Profile",
+    load: "67%"
   },
   {
+    pid: "0012",
     icon: Zap,
-    command: "agent.execute()",
-    title: "Auto Execute",
-    description: "24/7 autonomous trading via secure embedded wallets",
+    name: "AUTO_EXEC",
+    cmd: "agent.execute()",
+    status: "STANDBY",
+    desc: "Autonomous trade routing",
+    load: "0%"
   },
   {
+    pid: "9901",
     icon: Lock,
-    command: "wallet.secure()",
-    title: "Vault Security",
-    description: "Military-grade encryption for all wallet operations",
+    name: "SECURE_VAULT",
+    cmd: "wallet.secure()",
+    status: "LOCKED",
+    desc: "MPC encryption active",
+    load: "100%"
   },
 ];
 
-const stats = [
-  { label: "volume_traded", value: "2.3M", prefix: "$" },
-  { label: "trades_daily", value: "1.2K", prefix: "" },
-  { label: "success_rate", value: "94", prefix: "", suffix: "%" },
+const bootLog = [
+  { type: "sys", text: "BIOS CHECK .......................... OK" },
+  { type: "sys", text: "LOADING KERNEL ...................... OK" },
+  { type: "cmd", text: "> mount /dev/movement-mainnet" },
+  { type: "res", text: "MOUNTED: 0x82...3f1a [RW]" },
+  { type: "cmd", text: "> init trading_agent_v2" },
+  { type: "res", text: "ALLOCATING NEURAL NET ..." },
+  { type: "sys", text: "ESTABLISHING SECURE TUNNEL" },
+  { type: "success", text: "SYSTEM READY. AWAITING INPUT." },
 ];
 
-const codeLines = [
-  { type: "comment", text: "// Initialize AI Trading Agent v2.1.0" },
-  { type: "code", text: "const agent = new TradingAgent();" },
-  { type: "code", text: "agent.connect('movement-mainnet');" },
-  { type: "code", text: "agent.enableAutonomousMode();" },
-  { type: "output", text: "[OK] Agent initialized successfully" },
-  { type: "output", text: "[OK] Connected to Movement Network" },
-  { type: "status", text: "Status: READY" },
-];
+// --- Sub-Components ---
+
+function StatusBadge({ label, active = true }: { label: string, active?: boolean }) {
+  return (
+    <div className="flex items-center gap-2 px-3 py-1 bg-[#0a0a0a] border border-[#1a1a1a]">
+      <div className={`w-1.5 h-1.5 rounded-full ${active ? "bg-[#00ff00] animate-pulse" : "bg-[#ff3333]"}`} />
+      <span className="text-[10px] font-mono text-[#006600] uppercase tracking-wider">{label}</span>
+    </div>
+  );
+}
+
+function DiagnosticRow({ label, value }: { label: string, value: string }) {
+  return (
+    <div className="flex justify-between items-center text-xs font-mono border-b border-[#1a1a1a] py-1 last:border-0">
+      <span className="text-[#006600]">{label}</span>
+      <span className="text-[#00ff00]">{value}</span>
+    </div>
+  );
+}
+
+// --- Main Layout ---
 
 export function LandingPage() {
   const { login } = usePrivyWallet();
 
   return (
-    <div className="min-h-screen scanline">
-      <section className="relative pt-16 pb-20">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="max-w-4xl mx-auto">
-            <div className="terminal-window mb-12">
-              <div className="terminal-header">
-                <div className="terminal-dot red"></div>
-                <div className="terminal-dot yellow"></div>
-                <div className="terminal-dot green"></div>
-                <span className="terminal-title">ai-trading-agent — bash</span>
+    <div className="min-h-screen bg-black text-[#00ff00] font-mono selection:bg-[#00ff00] selection:text-black flex flex-col relative overflow-hidden">
+      
+      {/* Background Decor: Grid */}
+      <div className="fixed inset-0 pointer-events-none opacity-10" 
+           style={{ backgroundImage: 'linear-gradient(#00ff00 1px, transparent 1px), linear-gradient(90deg, #00ff00 1px, transparent 1px)', backgroundSize: '40px 40px' }} 
+      />
+      
+      {/* Background Decor: Vignette */}
+      <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(circle_at_center,transparent_0%,black_100%)]" />
+
+   
+
+      {/* --- MAIN CONTENT AREA --- */}
+      <main className="flex-1 container mx-auto px-4 py-8 relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-8">
+        
+        {/* LEFT COLUMN: HERO & IDENTITY (7 cols) */}
+        <div className="lg:col-span-7 flex flex-col justify-center gap-8">
+          
+          {/* Hero Text */}
+          <div className="space-y-6">
+            <div className="inline-block border border-[#00ff00] px-2 py-0.5 text-[10px] bg-[#00ff00]/10 mb-2">
+              :: SYSTEM INITIALIZED
+            </div>
+            
+            <h1 className="text-5xl md:text-7xl font-bold tracking-tighter leading-[0.9] text-transparent bg-clip-text bg-gradient-to-b from-[#00ff00] to-[#004400]">
+              AUTONOMOUS<br/>
+              TRADING<br/>
+              PROTOCOL
+            </h1>
+            
+            <p className="text-[#00aa00] text-lg max-w-lg leading-relaxed border-l-2 border-[#004400] pl-4">
+              Deploy intelligent agents to the Movement Network. 
+              Real-time sentiment parsing meets millisecond execution.
+            </p>
+
+            {/* CTA Command Line */}
+            <div className="mt-8 group">
+              <div className="flex items-center gap-2 text-[#006600] text-xs mb-1">
+                <Power className="h-3 w-3" />
+                <span>ROOT ACCESS REQUIRED</span>
               </div>
-              <div className="terminal-body font-mono text-sm">
-                {codeLines.map((line, i) => (
-                  <div key={i} className="mb-1">
-                    {line.type === "comment" && (
-                      <span className="text-[#006600]">{line.text}</span>
-                    )}
-                    {line.type === "code" && (
-                      <span className="text-[#00ff00]">
-                        <span className="text-[#00aa00]">$ </span>
-                        {line.text}
-                      </span>
-                    )}
-                    {line.type === "output" && (
-                      <span className="text-[#00cc00]">{line.text}</span>
-                    )}
-                    {line.type === "status" && (
-                      <span className="text-[#00ff00] glow-text font-bold">{line.text}</span>
-                    )}
-                  </div>
-                ))}
-                <div className="mt-4 flex items-center">
-                  <span className="text-[#00aa00]">$ </span>
-                  <span className="text-[#00ff00]">_</span>
-                  <span className="cursor"></span>
-                </div>
+              <button 
+                onClick={login}
+                className="w-full sm:w-auto flex items-center gap-4 bg-[#0a0a0a] border border-[#00ff00] px-6 py-4 hover:bg-[#00ff00] hover:text-black transition-all duration-300 group-hover:shadow-[0_0_20px_rgba(0,255,0,0.3)]"
+              >
+                <span className="text-xl font-bold">{">"} INITIALIZE_AGENT</span>
+                <Play className="h-5 w-5 fill-current animate-pulse" />
+              </button>
+            </div>
+          </div>
+
+          {/* Mini Diagnostic Panel (Mobile only usually, but good here) */}
+          <div className="grid grid-cols-3 gap-4 border-t border-[#1a1a1a] pt-6">
+             <div>
+                <div className="text-[10px] text-[#006600] uppercase mb-1">Total Volume</div>
+                <div className="text-2xl font-bold text-[#00ff00]">$2.3M</div>
+             </div>
+             <div>
+                <div className="text-[10px] text-[#006600] uppercase mb-1">Daily Trades</div>
+                <div className="text-2xl font-bold text-[#00ff00]">1.2K</div>
+             </div>
+             <div>
+                <div className="text-[10px] text-[#006600] uppercase mb-1">Success Rate</div>
+                <div className="text-2xl font-bold text-[#00ff00]">94%</div>
+             </div>
+          </div>
+
+        </div>
+
+        {/* RIGHT COLUMN: TERMINAL & MODULES (5 cols) */}
+        <div className="lg:col-span-5 flex flex-col gap-6">
+          
+          {/* Component 1: The Boot Log (Terminal) */}
+          <div className="border border-[#1a1a1a] bg-[#050505] p-1 shadow-2xl">
+            <div className="bg-[#111] px-2 py-1 flex items-center justify-between border-b border-[#1a1a1a]">
+              <span className="text-[10px] text-[#006600]">boot_sequence.log</span>
+              <div className="flex gap-1">
+                <div className="w-2 h-2 rounded-full bg-[#333]" />
+                <div className="w-2 h-2 rounded-full bg-[#333]" />
               </div>
             </div>
-
-            <div className="text-center mb-12">
-              <div className="inline-flex items-center gap-3 px-4 py-2 border border-[#00ff00] mb-8">
-                <span className="w-2 h-2 bg-[#00ff00] animate-pulse-terminal"></span>
-                <span className="text-[#00ff00] text-sm uppercase tracking-widest">
-                  [LIVE] Movement Network Mainnet
-                </span>
-              </div>
-
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-[#00ff00] mb-6 tracking-tight glow-text">
-                AI_TRADING_AGENT
-              </h1>
-
-              <p className="text-lg text-[#00aa00] mb-10 max-w-2xl mx-auto font-mono">
-                {">"} Autonomous trading system powered by neural networks.
-                <br />
-                {">"} Real-time analysis. Intelligent execution. 24/7 uptime.
-              </p>
-
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                <Button 
-                  size="lg" 
-                  className="btn-terminal-filled px-8 py-6 text-base w-full sm:w-auto"
-                  onClick={login}
-                >
-                  <Terminal className="h-5 w-5 mr-2" />
-                  ./initialize --start
-                </Button>
-                <Button 
-                  size="lg"
-                  className="btn-terminal px-8 py-6 text-base w-full sm:w-auto"
-                >
-                  cat README.md
-                  <ArrowRight className="h-4 w-4 ml-2" />
-                </Button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-6 max-w-3xl mx-auto mb-8">
-              {stats.map((stat) => (
-                <div key={stat.label} className="stat-card text-center">
-                  <div className="text-2xl sm:text-3xl font-bold text-[#00ff00] mb-2 font-mono glow-text-subtle">
-                    {stat.prefix}{stat.value}{stat.suffix}
-                  </div>
-                  <div className="text-xs text-[#006600] font-mono uppercase tracking-wider">
-                    {stat.label}
-                  </div>
+            <div className="p-4 font-mono text-xs h-[200px] overflow-hidden relative">
+              {bootLog.map((line, i) => (
+                <div key={i} className="mb-1 leading-tight">
+                   {line.type === "cmd" && <span className="text-[#00ff00] font-bold">{line.text}</span>}
+                   {line.type === "sys" && <span className="text-[#006600]">{line.text}</span>}
+                   {line.type === "res" && <span className="text-[#00aa00] ml-2">{line.text}</span>}
+                   {line.type === "success" && <span className="text-[#00ff00] bg-[#00ff00]/10 px-1 mt-2 inline-block">{line.text}</span>}
                 </div>
               ))}
+              <div className="absolute bottom-4 left-4 flex animate-pulse">
+                <span className="text-[#00ff00] mr-1">{">"}</span>
+                <span className="w-2 h-4 bg-[#00ff00]" />
+              </div>
+              {/* Scanline overlay */}
+              <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] z-10 background-size-[100%_2px,3px_100%]" />
             </div>
           </div>
-        </div>
-      </section>
 
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="divider" />
-      </div>
-
-      <section id="features" className="py-20">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-2xl sm:text-3xl font-bold text-[#00ff00] mb-4 font-mono">
-              {"// SYSTEM MODULES"}
-            </h2>
-            <p className="text-[#006600] font-mono">
-              Core components of the autonomous trading system
-            </p>
+          {/* Component 2: Process Manager (Features) */}
+          <div className="border border-[#1a1a1a] bg-[#050505] flex-1 min-h-[300px]">
+             <div className="bg-[#111] px-3 py-2 border-b border-[#1a1a1a] flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                   <Server className="h-3 w-3 text-[#00ff00]" />
+                   <span className="text-[10px] font-bold text-[#00ff00] uppercase">Active Modules</span>
+                </div>
+                <span className="text-[10px] text-[#006600]">CPU: 12%</span>
+             </div>
+             
+             <div className="divide-y divide-[#1a1a1a]">
+                {/* Header Row */}
+                <div className="grid grid-cols-12 px-3 py-1.5 text-[9px] text-[#004400] uppercase tracking-wider bg-[#080808]">
+                   <div className="col-span-2">PID</div>
+                   <div className="col-span-5">Process Name</div>
+                   <div className="col-span-3">Status</div>
+                   <div className="col-span-2 text-right">Load</div>
+                </div>
+                
+                {/* Rows */}
+                {systemProcesses.map((proc) => (
+                   <div key={proc.pid} className="grid grid-cols-12 px-3 py-3 items-center hover:bg-[#111] transition-colors group cursor-default">
+                      <div className="col-span-2 text-[10px] text-[#006600] font-mono group-hover:text-[#00ff00]">
+                         {proc.pid}
+                      </div>
+                      <div className="col-span-5">
+                         <div className="flex items-center gap-2">
+                            <proc.icon className="h-3 w-3 text-[#00aa00]" />
+                            <div>
+                               <div className="text-[11px] font-bold text-[#eee] group-hover:text-[#00ff00]">{proc.name}</div>
+                               <div className="text-[9px] text-[#555] hidden sm:block">{proc.cmd}</div>
+                            </div>
+                         </div>
+                      </div>
+                      <div className="col-span-3">
+                         <span className={`text-[9px] px-1.5 py-0.5 rounded-sm ${
+                            proc.status === "RUNNING" ? "bg-[#00ff00]/20 text-[#00ff00]" :
+                            proc.status === "LOCKED" ? "bg-[#ff3333]/20 text-[#ff3333]" :
+                            "bg-[#222] text-[#777]"
+                         }`}>
+                            {proc.status}
+                         </span>
+                      </div>
+                      <div className="col-span-2 text-right text-[10px] text-[#00aa00] font-mono">
+                         {proc.load}
+                      </div>
+                   </div>
+                ))}
+             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-w-5xl mx-auto">
-            {features.map((feature) => (
-              <div
-                key={feature.title}
-                className="p-5 bg-[#0f0f0f] border border-[#1a1a1a] hover:border-[#00ff00] transition-all group"
-              >
-                <div className="flex items-center gap-3 mb-3">
-                  <feature.icon className="h-5 w-5 text-[#00ff00]" />
-                  <code className="text-[#00aa00] text-sm">{feature.command}</code>
-                </div>
-                <h3 className="text-[#00ff00] font-bold mb-2 font-mono group-hover:glow-text-subtle">
-                  {feature.title}
-                </h3>
-                <p className="text-[#006600] text-sm font-mono leading-relaxed">
-                  {feature.description}
-                </p>
+        </div>
+      </main>
+
+      {/* --- FOOTER: STATUS TICKER --- */}
+      <footer className="border-t border-[#1a1a1a] bg-[#050505] py-2 overflow-hidden relative z-20">
+         <div className="flex whitespace-nowrap animate-marquee">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="flex items-center gap-8 mx-4">
+                 <div className="flex items-center gap-2 text-[10px] text-[#006600]">
+                    <Globe className="h-3 w-3" />
+                    <span>NETWORK_LATENCY: 12ms</span>
+                 </div>
+                 <div className="flex items-center gap-2 text-[10px] text-[#006600]">
+                    <ShieldCheck className="h-3 w-3" />
+                    <span>SECURITY_LEVEL: MAXIMUM</span>
+                 </div>
+                 <div className="flex items-center gap-2 text-[10px] text-[#006600]">
+                    <Activity className="h-3 w-3" />
+                    <span>ACTIVE_NODES: 4,021</span>
+                 </div>
+                 <span className="text-[#1a1a1a]">///</span>
               </div>
             ))}
-          </div>
-        </div>
-      </section>
-
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="divider" />
-      </div>
-
-      <section className="py-16">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="max-w-3xl mx-auto p-8 border border-[#00ff00] glow-border">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-              <div className="font-mono">
-                <div className="text-[#006600] text-sm mb-2">
-                  {"// Ready to deploy?"}
-                </div>
-                <div className="text-[#00ff00] text-xl font-bold glow-text-subtle">
-                  {">"} sudo ./start_trading
-                </div>
-              </div>
-              <Button 
-                size="lg" 
-                className="btn-terminal-filled px-8 whitespace-nowrap"
-                onClick={login}
-              >
-                EXECUTE
-                <ArrowRight className="h-4 w-4 ml-2" />
-              </Button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <footer className="py-8 border-t border-[#1a1a1a]">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center font-mono text-xs text-[#006600]">
-            <p>AI Trading Agent v2.1.0 | Movement Network</p>
-            <p className="mt-1">{"// All systems operational"}</p>
-          </div>
-        </div>
+         </div>
       </footer>
     </div>
   );

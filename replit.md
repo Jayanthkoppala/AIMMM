@@ -1,4 +1,4 @@
-# AI Trading Agent
+# AIMMM
 
 ## Overview
 An AI-powered trading agent application built for Movement Network. This is a monorepo with a Next.js frontend and FastAPI Python backend.

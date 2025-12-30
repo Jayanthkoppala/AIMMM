@@ -1,8 +1,8 @@
 {
-  "name": "ai-trading-agent",
+  "name": "aimmm",
   "version": "0.1.0",
   "private": true,
-  "description": "AI Trading Agent Hackathon App on Movement Network",
+  "description": "AIMMM - AI Trading Agent Hackathon App on Movement Network",
   "scripts": {
     "dev": "pnpm --parallel --filter './frontend' --filter './backend' dev",
     "dev:frontend": "pnpm --filter frontend dev",

@@ -8,8 +8,8 @@ from app.utils.logger import logger
 from app.exceptions import BaseAPIException
 
 app = FastAPI(
-    title="AI Trading Agent API",
-    description="Backend API for AI Trading Agent on Movement Network",
+    title="AIMMM API",
+    description="Backend API for AIMMM on Movement Network",
     version="0.1.0"
 )
 
@@ -129,7 +129,7 @@ async def detailed_health_check():
 async def root():
     """Root endpoint"""
     return {
-        "name": "AI Trading Agent API",
+        "name": "AIMMM API",
         "version": "0.1.0",
         "status": "running"
     }
@@ -139,13 +139,19 @@ async def root():
 async def startup_event():
     """Start background services on application startup."""
     # Initialize CoinGecko database tables
-    from app.utils.db_init import init_coingecko_tables, init_strategy_tables, reset_sequence
+    from app.utils.db_init import init_coingecko_tables, init_strategy_tables, init_users_table, reset_sequence
     if init_coingecko_tables():
         logger.info("CoinGecko database tables initialized")
         # Ensure ID sequence is correct after initialization
         reset_sequence()
     else:
         logger.error("Failed to initialize CoinGecko database tables")
+    
+    # Initialize users table first (required for strategy tables)
+    if init_users_table():
+        logger.info("Users table initialized")
+    else:
+        logger.error("Failed to initialize users table")
     
     # Initialize strategy builder tables
     if init_strategy_tables():

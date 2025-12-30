@@ -250,7 +250,7 @@ class RiskManagementAgent:
             return False, f"Position value (${position_value:.2f}) below minimum (${self.min_position_size_usd})"
         
         return True, None
-    
+
     def calculate_portfolio_diversification_score(
         self,
         balances: list,

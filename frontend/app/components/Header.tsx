@@ -88,7 +88,7 @@ export function Header() {
               <Terminal className="h-4 w-4 text-[#00ff00]" />
             </div>
             <h1 className="text-sm font-bold text-[#00ff00] tracking-wider font-mono">
-              AI_AGENT
+              AIMMM
             </h1>
           </div>
           

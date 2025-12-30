@@ -236,7 +236,8 @@ export interface TradeStatistics {
 // Create Strategy
 export async function createStrategy(
   data: Omit<Strategy, 'id' | 'user_id' | 'wallet_address' | 'created_at' | 'updated_at' | 'last_execution'>,
-  accessToken?: string
+  accessToken?: string,
+  walletAddress?: string
 ): Promise<Strategy> {
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
@@ -244,6 +245,10 @@ export async function createStrategy(
   
   if (accessToken) {
     headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+  
+  if (walletAddress) {
+    headers['X-Wallet-Address'] = walletAddress;
   }
 
   const response = await fetch(`${API_BASE_URL}/strategies`, {
@@ -268,7 +273,8 @@ export async function getStrategies(
     is_active?: boolean;
     limit?: number;
     offset?: number;
-  }
+  },
+  walletAddress?: string
 ): Promise<{ strategies: Strategy[]; count: number }> {
   const queryParams = new URLSearchParams();
   if (params?.visibility) queryParams.append('visibility', params.visibility);
@@ -279,6 +285,9 @@ export async function getStrategies(
   const headers: HeadersInit = {};
   if (accessToken) {
     headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+  if (walletAddress) {
+    headers['X-Wallet-Address'] = walletAddress;
   }
 
   const response = await fetch(`${API_BASE_URL}/strategies?${queryParams}`, {
@@ -293,10 +302,13 @@ export async function getStrategies(
 }
 
 // Get Strategy
-export async function getStrategy(strategyId: string, accessToken?: string): Promise<Strategy> {
+export async function getStrategy(strategyId: string, accessToken?: string, walletAddress?: string): Promise<Strategy> {
   const headers: HeadersInit = {};
   if (accessToken) {
     headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+  if (walletAddress) {
+    headers['X-Wallet-Address'] = walletAddress;
   }
 
   const response = await fetch(`${API_BASE_URL}/strategies/${strategyId}`, {
@@ -314,7 +326,8 @@ export async function getStrategy(strategyId: string, accessToken?: string): Pro
 export async function executeStrategy(
   strategyId: string,
   executionMode: 'analysis' | 'trade',
-  accessToken?: string
+  accessToken?: string,
+  walletAddress?: string
 ): Promise<any> {
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
@@ -322,6 +335,9 @@ export async function executeStrategy(
   
   if (accessToken) {
     headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+  if (walletAddress) {
+    headers['X-Wallet-Address'] = walletAddress;
   }
 
   const response = await fetch(`${API_BASE_URL}/strategies/${strategyId}/execute`, {
@@ -340,11 +356,15 @@ export async function executeStrategy(
 // Get Trading State
 export async function getTradingState(
   strategyId: string,
-  accessToken?: string
+  accessToken?: string,
+  walletAddress?: string
 ): Promise<TradingState> {
   const headers: HeadersInit = {};
   if (accessToken) {
     headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+  if (walletAddress) {
+    headers['X-Wallet-Address'] = walletAddress;
   }
 
   const response = await fetch(`${API_BASE_URL}/strategies/${strategyId}/trading-state`, {
@@ -366,7 +386,8 @@ export async function getExecutions(
     limit?: number;
     offset?: number;
     include_market_data?: boolean;
-  }
+  },
+  walletAddress?: string
 ): Promise<{ executions: Execution[]; count: number }> {
   const queryParams = new URLSearchParams();
   if (params?.limit) queryParams.append('limit', String(params.limit));
@@ -376,6 +397,9 @@ export async function getExecutions(
   const headers: HeadersInit = {};
   if (accessToken) {
     headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+  if (walletAddress) {
+    headers['X-Wallet-Address'] = walletAddress;
   }
 
   const response = await fetch(
@@ -395,11 +419,15 @@ export async function getExecutions(
 // Get Trade Statistics
 export async function getTradeStatistics(
   strategyId: string,
-  accessToken?: string
+  accessToken?: string,
+  walletAddress?: string
 ): Promise<{ strategy_id: string; statistics: TradeStatistics }> {
   const headers: HeadersInit = {};
   if (accessToken) {
     headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+  if (walletAddress) {
+    headers['X-Wallet-Address'] = walletAddress;
   }
 
   const response = await fetch(
@@ -421,7 +449,8 @@ export async function activateStrategy(
   strategyId: string,
   intervalMinutes: number,
   executionMode: 'analysis' | 'trade',
-  accessToken?: string
+  accessToken?: string,
+  walletAddress?: string
 ): Promise<any> {
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
@@ -429,6 +458,9 @@ export async function activateStrategy(
   
   if (accessToken) {
     headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+  if (walletAddress) {
+    headers['X-Wallet-Address'] = walletAddress;
   }
 
   const response = await fetch(`${API_BASE_URL}/strategies/${strategyId}/activate`, {
@@ -450,11 +482,15 @@ export async function activateStrategy(
 // Deactivate Strategy
 export async function deactivateStrategy(
   strategyId: string,
-  accessToken?: string
+  accessToken?: string,
+  walletAddress?: string
 ): Promise<any> {
   const headers: HeadersInit = {};
   if (accessToken) {
     headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+  if (walletAddress) {
+    headers['X-Wallet-Address'] = walletAddress;
   }
 
   const response = await fetch(`${API_BASE_URL}/strategies/${strategyId}/deactivate`, {
@@ -472,11 +508,15 @@ export async function deactivateStrategy(
 // Delete Strategy
 export async function deleteStrategy(
   strategyId: string,
-  accessToken?: string
+  accessToken?: string,
+  walletAddress?: string
 ): Promise<void> {
   const headers: HeadersInit = {};
   if (accessToken) {
     headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+  if (walletAddress) {
+    headers['X-Wallet-Address'] = walletAddress;
   }
 
   const response = await fetch(`${API_BASE_URL}/strategies/${strategyId}`, {

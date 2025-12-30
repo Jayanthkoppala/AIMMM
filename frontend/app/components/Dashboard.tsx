@@ -5,7 +5,6 @@ import {
   Terminal, 
   Bot, 
   BarChart3, 
-  History, 
   Settings,
   Activity,
   TrendingUp,
@@ -14,7 +13,6 @@ import {
   Sparkles
 } from "lucide-react";
 import { AgentDashboard } from "./AgentDashboard";
-import { TradeHistory } from "./TradeHistory";
 import { ActivityFeed } from "./ActivityFeed";
 import { MarketOverview } from "./MarketOverview";
 import { StrategyBuilder } from "./StrategyBuilder";
@@ -27,7 +25,6 @@ const tabs = [
   { id: "my-strategies", label: "./my_strategies", icon: Activity },
   { id: "agents", label: "./agents", icon: Bot },
   { id: "analytics", label: "./analytics", icon: BarChart3 },
-  { id: "history", label: "./history", icon: History },
   { id: "settings", label: "./config", icon: Settings },
 ];
 
@@ -134,10 +131,6 @@ export function Dashboard() {
           <div className="max-w-6xl">
             <MarketAnalytics />
           </div>
-        )}
-
-        {activeTab === "history" && (
-          <TradeHistory />
         )}
 
         {activeTab === "settings" && (

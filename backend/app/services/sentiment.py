@@ -457,9 +457,33 @@ class SentimentAnalyzer:
             token_a = sentiment_data.get('token_a', {})
             token_b = sentiment_data.get('token_b', {})
             
+            # Look up pool_id from token addresses
+            # The table has UNIQUE(pool_id, analyzed_at), so we need pool_id
+            pool_query = """
+                SELECT id
+                FROM pools
+                WHERE (token_a_address = %s AND token_b_address = %s)
+                   OR (token_a_address = %s AND token_b_address = %s)
+                LIMIT 1
+            """
+            pool_result = db_connection.execute_query(
+                pool_query,
+                (token_a_address, token_b_address, token_b_address, token_a_address),
+                fetch_one=True
+            )
+            pool_id = pool_result.get('id') if pool_result else None
+            
+            # If no pool found, we can't store with proper constraint
+            # Use NULL pool_id (will work but won't have conflict protection)
+            if pool_id is None:
+                logger.warning(
+                    f"Could not find pool_id for token pair {token_a_symbol}/{token_b_symbol}. "
+                    f"Storing sentiment without pool_id."
+                )
+            
             query = """
                 INSERT INTO sentiment_analysis (
-                    token_a_address, token_b_address,
+                    pool_id, token_a_address, token_b_address,
                     token_a_symbol, token_b_symbol,
                     token_a_sentiment_score, token_a_sentiment_label, token_a_confidence,
                     token_a_key_factors, token_a_social_volume, token_a_mentions_24h, token_a_dominant_emotion,
@@ -467,15 +491,16 @@ class SentimentAnalyzer:
                     token_b_key_factors, token_b_social_volume, token_b_mentions_24h, token_b_dominant_emotion,
                     timeframe, analyzed_at
                 ) VALUES (
-                    %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s,
                     %s, NOW()
                 )
-                ON CONFLICT (token_a_address, token_b_address, analyzed_at) DO NOTHING
+                ON CONFLICT (pool_id, analyzed_at) DO NOTHING
             """
             
             params = (
+                pool_id,
                 token_a_address, token_b_address,
                 token_a_symbol, token_b_symbol,
                 token_a.get('sentiment_score', 0.0),
