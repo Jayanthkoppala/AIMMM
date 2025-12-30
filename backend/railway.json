@@ -8,6 +8,6 @@
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   },
-  "note": "This configuration is shared by both API and Worker services. Set RUN_MODE environment variable per service: RUN_MODE=api for HTTP server, RUN_MODE=worker for background schedulers. See RAILWAY_DEPLOYMENT.md for setup instructions."
+  "note": "This configuration is shared by both API and Worker services. Set RUN_MODE environment variable per service: RUN_MODE=api for HTTP server, RUN_MODE=worker for background schedulers. IMPORTANT: For Worker service, disable 'Serverless' mode in Railway dashboard to prevent auto-sleep. See RAILWAY_DEPLOYMENT.md for setup instructions."
 }
 

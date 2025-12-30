@@ -39,7 +39,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
     <PrivyProvider
       appId={privyAppId}
       config={{
-        loginMethods: ["email", "google", "twitter", "github", "apple", "discord", "farcaster", "wallet"],
+        loginMethods: ["email",  "wallet"],
         appearance: {
           theme: "dark",
           accentColor: "#00ff00",
