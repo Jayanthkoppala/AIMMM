@@ -15,8 +15,8 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY . .
+# Copy application code (only backend files)
+COPY app/ ./app/
 
 # Expose port (Railway/Render will set PORT env var)
 EXPOSE 8000

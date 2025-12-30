@@ -22,3 +22,14 @@ htmlcov/
 .movement
 *.log
 
+# Exclude frontend files and root-level dependencies
+../frontend
+../node_modules
+../pnpm-lock.yaml
+../package.json
+../turbo.json
+../.git
+../.github
+../.vscode
+../.idea
+
