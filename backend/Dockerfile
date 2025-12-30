@@ -10,13 +10,13 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
-COPY requirements.txt .
+COPY backend/requirements.txt .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code (only backend files)
-COPY app/ ./app/
+COPY backend/app/ ./app/
 
 # Expose port (Railway/Render will set PORT env var)
 EXPOSE 8000
