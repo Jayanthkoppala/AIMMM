@@ -14,12 +14,22 @@ const nextConfig: NextConfig = {
     ],
   },
   async rewrites() {
-    return [
-      {
-        source: '/api/:path*',
-        destination: 'http://localhost:8000/:path*',
-      },
-    ];
+    // Only use rewrites in development when NEXT_PUBLIC_API_URL is not set
+    // In production, use NEXT_PUBLIC_API_URL environment variable directly
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    
+    if (!apiUrl || apiUrl.includes('localhost')) {
+      // Development: use rewrite to proxy to local backend
+      return [
+        {
+          source: '/api/:path*',
+          destination: 'http://localhost:8000/:path*',
+        },
+      ];
+    }
+    
+    // Production: no rewrites needed, frontend will call API directly
+    return [];
   },
   async headers() {
     return [
