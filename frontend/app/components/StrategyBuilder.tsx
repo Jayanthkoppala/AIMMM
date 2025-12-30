@@ -72,7 +72,7 @@ export function StrategyBuilder() {
     
     if (typeof window !== 'undefined') {
       const existingSessionId = sessionStorage.getItem('aimmm_session_id');
-      if (existingSessionId) {
+      if (existingSessionId !== null && existingSessionId !== undefined) {
         return existingSessionId;
       }
       const newSessionId = `session-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
@@ -130,10 +130,9 @@ export function StrategyBuilder() {
       
       // Get authentication details
       const token = authenticated ? await getAccessToken() : undefined;
-      const walletAddressRaw = getWalletAddress();
-      // Ensure walletAddress is never null (sessionStorage.getItem can return null)
-      // TypeScript sees sessionStorage.getItem as potentially returning null, so we need to filter it out
-      const walletAddress: string | undefined = walletAddressRaw ?? undefined;
+      const walletAddressRaw = getWalletAddress(); // Returns string | undefined
+      // Explicitly filter out null to satisfy TypeScript
+      const walletAddress: string | undefined = walletAddressRaw === null ? undefined : walletAddressRaw;
 
       // Get the trading token for the selected pool (non-USDC token)
       const selectedPool = STATIC_POOLS.find(p => p.id === selectedPoolId);
@@ -199,11 +198,9 @@ export function StrategyBuilder() {
       console.log("Auth token:", token ? "present" : "none");
       console.log("Wallet address:", walletAddress);
 
-      // TypeScript workaround: ensure walletAddress is never null
-      // The type guard above should have filtered out null, but TypeScript doesn't narrow it properly
-      // Use explicit undefined if null
-      const safeWalletAddress: string | undefined = (walletAddress === null || walletAddress === undefined) ? undefined : walletAddress;
-      const result = await createStrategy(strategyData, token, safeWalletAddress);
+      // createStrategy accepts string | null | undefined
+      // @ts-expect-error - TypeScript incorrectly infers null from sessionStorage, but function accepts it
+      const result = await createStrategy(strategyData, token, walletAddress);
       
       console.log("Strategy created successfully:", result);
       

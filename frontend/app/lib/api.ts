@@ -237,7 +237,7 @@ export interface TradeStatistics {
 export async function createStrategy(
   data: Omit<Strategy, 'id' | 'user_id' | 'wallet_address' | 'created_at' | 'updated_at' | 'last_execution'>,
   accessToken?: string,
-  walletAddress?: string
+  walletAddress?: string | null | undefined
 ): Promise<Strategy> {
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
@@ -247,7 +247,7 @@ export async function createStrategy(
     headers['Authorization'] = `Bearer ${accessToken}`;
   }
   
-  if (walletAddress) {
+  if (walletAddress != null) {
     headers['X-Wallet-Address'] = walletAddress;
   }
 

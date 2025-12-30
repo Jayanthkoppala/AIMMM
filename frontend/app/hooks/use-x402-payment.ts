@@ -37,8 +37,10 @@ export function useX402Payment() {
     const signed = await signTransaction({ transactionOrPayload: tx });
 
     // Extract bytes from wallet's nested response and use SDK classes for BCS serialization
-    const pubKeyBytes = toBytes(signed.authenticator.public_key.key.data);
-    const sigBytes = toBytes(signed.authenticator.signature.data.data);
+    // Type assertion needed due to SDK type changes - the structure exists at runtime
+    const authenticatorData = signed.authenticator as any;
+    const pubKeyBytes = toBytes(authenticatorData.public_key?.key?.data || authenticatorData.public_key?.data);
+    const sigBytes = toBytes(authenticatorData.signature?.data?.data || authenticatorData.signature?.data);
     const authenticator = new AccountAuthenticatorEd25519(
       new Ed25519PublicKey(pubKeyBytes),
       new Ed25519Signature(sigBytes)

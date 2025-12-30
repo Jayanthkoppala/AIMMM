@@ -325,10 +325,10 @@ function PoolAnalyticsCard({ pool, data, onRefresh }: {
                            <Zap className="h-3 w-3" /> Momentum
                         </div>
                         <div className="space-y-1">
-                          <DataCell label="RSI (14)" value={data.indicators.momentum.rsi?.toFixed(1)} color={getRSIColor(data.indicators.momentum.rsi)} />
+                          <DataCell label="RSI (14)" value={data.indicators.momentum.rsi?.toFixed(1) ?? null} color={getRSIColor(data.indicators.momentum.rsi)} />
                           <div className="grid grid-cols-2 gap-1 mt-1">
-                            <DataCell label="Stoch" value={data.indicators.momentum.stoch?.toFixed(0)} subValue="%" />
-                            <DataCell label="MFI" value={data.indicators.momentum.mfi?.toFixed(0)} />
+                            <DataCell label="Stoch" value={data.indicators.momentum.stoch?.toFixed(0) ?? null} subValue="%" />
+                            <DataCell label="MFI" value={data.indicators.momentum.mfi?.toFixed(0) ?? null} />
                           </div>
                         </div>
                       </div>
@@ -339,8 +339,8 @@ function PoolAnalyticsCard({ pool, data, onRefresh }: {
                            <TrendingUp className="h-3 w-3" /> Trend
                         </div>
                         <div className="space-y-1">
-                          <DataCell label="MACD" value={data.indicators.trend.macd?.toFixed(4)} />
-                          <DataCell label="ADX" value={data.indicators.trend.adx?.toFixed(2)} />
+                          <DataCell label="MACD" value={data.indicators.trend.macd?.toFixed(4) ?? null} />
+                          <DataCell label="ADX" value={data.indicators.trend.adx?.toFixed(2) ?? null} />
                           <div className="flex justify-between text-[9px] font-mono text-[#004400] pt-1 mt-1 border-t border-[#1a1a1a]">
                              <span>MA20: {formatPrice(data.indicators.trend.sma_20)}</span>
                           </div>
@@ -353,8 +353,8 @@ function PoolAnalyticsCard({ pool, data, onRefresh }: {
                            <Gauge className="h-3 w-3" /> Volatility
                         </div>
                         <div className="space-y-1">
-                          <DataCell label="ATR" value={data.indicators.volatility.atr?.toFixed(4)} />
-                          <DataCell label="BB %B" value={data.indicators.volatility.bb_pband?.toFixed(2)} />
+                          <DataCell label="ATR" value={data.indicators.volatility.atr?.toFixed(4) ?? null} />
+                          <DataCell label="BB %B" value={data.indicators.volatility.bb_pband?.toFixed(2) ?? null} />
                           <div className="flex justify-between text-[9px] font-mono text-[#004400] pt-1 mt-1 border-t border-[#1a1a1a]">
                              <span>Width: {((data.indicators.volatility.bb_hband! - data.indicators.volatility.bb_lband!) / data.indicators.volatility.bb_mavg! * 100).toFixed(2)}%</span>
                           </div>
@@ -369,7 +369,7 @@ function PoolAnalyticsCard({ pool, data, onRefresh }: {
                         <div className="space-y-1">
                            <DataCell 
                               label="CMF" 
-                              value={data.indicators.volume.cmf?.toFixed(3)} 
+                              value={data.indicators.volume.cmf?.toFixed(3) ?? null} 
                               color={(data.indicators.volume.cmf || 0) > 0 ? "text-[#00ff00]" : "text-[#ff3333]"}
                             />
                            <DataCell label="VWAP" value={formatPrice(data.indicators.volume.vwap)} />
@@ -429,12 +429,12 @@ function PoolAnalyticsCard({ pool, data, onRefresh }: {
                         />
                        <DataCell 
                           label="Social Vol" 
-                          value={data.sentiment.token_b.social_volume?.toLocaleString()} 
+                          value={data.sentiment.token_b.social_volume?.toLocaleString() ?? null} 
                           icon={Users}
                         />
                        <DataCell 
                           label="Mentions (24h)" 
-                          value={data.sentiment.token_b.mentions_24h?.toLocaleString()} 
+                          value={data.sentiment.token_b.mentions_24h?.toLocaleString() ?? null} 
                           icon={MessageCircle}
                         />
                        
