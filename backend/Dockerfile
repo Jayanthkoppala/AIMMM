@@ -17,7 +17,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code (only backend files)
 COPY backend/app/ ./app/
-COPY backend/validate_env.py ./validate_env.py
 
 # Expose port (Railway/Render will set PORT env var)
 EXPOSE 8000
@@ -27,6 +26,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Start command (PORT env var will be set by hosting platform)
-# Validate environment variables before starting
-CMD python validate_env.py && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
+CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
 
