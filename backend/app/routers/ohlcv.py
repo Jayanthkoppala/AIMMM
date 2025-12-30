@@ -559,9 +559,8 @@ async def add_pool_to_monitoring(
                 detail="Failed to add pool to database"
             )
         
-        # Add to scheduler if it's running
-        from app.services.ohlcv_scheduler import ohlcv_scheduler
-        ohlcv_scheduler.add_pool(pool_address, network)
+        # Note: Scheduler interactions removed from API routes
+        # Worker service handles scheduler operations via RUN_MODE=worker
         
         # Fetch token metadata if requested
         if fetch_meta:
@@ -705,9 +704,8 @@ async def remove_pool_from_monitoring(
                     detail="Pool not found"
                 )
         
-        # Remove from scheduler
-        from app.services.ohlcv_scheduler import ohlcv_scheduler
-        ohlcv_scheduler.remove_pool(pool_address, network)
+        # Note: Scheduler interactions removed from API routes
+        # Worker service handles scheduler operations via RUN_MODE=worker
         
         return {
             "status": "ok",
@@ -733,20 +731,19 @@ async def get_candles(
     pool_address: str = Query(..., description="Pool address"),
     network: str = Query("movement", description="Network ID"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of candles (default: 100, max: 1000)"),
-    hours_back: Optional[int] = Query(None, ge=1, le=168, description="Only get candles from last N hours (max: 168 = 7 days)"),
-    from_db: bool = Query(True, description="Fetch from database (True) or CoinGecko API (False)"),
-    store: bool = Query(False, description="Store to DB if fetching from API")
+    hours_back: Optional[int] = Query(None, ge=1, le=168, description="Only get candles from last N hours (max: 168 = 7 days)")
 ):
     """
-    Get OHLCV candles for a pool (1-minute data only).
+    Get OHLCV candles for a pool from database (read-only, fast API endpoint).
+    
+    API Mode: This endpoint ONLY reads from database. No CoinGecko calls, no writes.
+    Worker Mode: Background scheduler populates the database.
     
     Args:
         pool_address: Pool address (required)
         network: Network ID (default: "movement")
-        limit: Maximum number of candles (1-5000, default: 500)
-        hours_back: Optional - only get candles from last N hours (1-720)
-        from_db: If True, fetch from database; if False, fetch from CoinGecko API
-        store: If True and from_db=False, store fetched data to database
+        limit: Maximum number of candles (1-1000, default: 100)
+        hours_back: Optional - only get candles from last N hours (1-168 = 7 days max)
     """
     if not pool_address or not pool_address.strip():
         raise HTTPException(
@@ -756,99 +753,58 @@ async def get_candles(
     
     pool_address = pool_address.strip()
     
+    # API routes are read-only - only fetch from database
+    if not db_connection.pool:
+        raise HTTPException(
+            status_code=503,
+            detail="Database connection not available"
+        )
+    
     try:
-        if from_db:
-            # Fetch from database
-            if not db_connection.pool:
-                raise HTTPException(
-                    status_code=503,
-                    detail="Database connection not available"
-                )
-            
-            # Get pool ID
-            pool_query = """
-                SELECT id, pool_name, token_a_symbol, token_b_symbol 
-                FROM pools 
-                WHERE pool_address = %s AND network = %s
-            """
-            pool_result = db_connection.execute_query(
-                pool_query, 
-                (pool_address, network), 
-                fetch_one=True
+        # Get pool ID
+        pool_query = """
+            SELECT id, pool_name, token_a_symbol, token_b_symbol 
+            FROM pools 
+            WHERE pool_address = %s AND network = %s
+        """
+        pool_result = db_connection.execute_query(
+            pool_query, 
+            (pool_address, network), 
+            fetch_one=True
+        )
+        
+        if not pool_result:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Pool not found in database. Add it first via POST /ohlcv/pools/{pool_address}"
             )
-            
-            if not pool_result:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Pool not found in database. Add it first via POST /ohlcv/pools/{pool_address}"
-                )
-            
-            pool_id = pool_result['id']
-            
-            # Build optimized query with index-friendly ORDER BY
-            # Use parameterized query to prevent SQL injection
-            if hours_back:
-                candles_query = """
-                    SELECT timestamp, open_price, high_price, low_price, close_price, volume
-                    FROM ohlcv_candles
-                    WHERE pool_id = %s AND timestamp >= NOW() - INTERVAL '%s hours'
-                    ORDER BY timestamp DESC
-                    LIMIT %s
-                """
-                params = (pool_id, hours_back, limit)
-            else:
-                # Optimized: Use LIMIT without WHERE clause when no time filter
-                candles_query = """
-                    SELECT timestamp, open_price, high_price, low_price, close_price, volume
-                    FROM ohlcv_candles
-                    WHERE pool_id = %s
-                    ORDER BY timestamp DESC
-                    LIMIT %s
-                """
-                params = (pool_id, limit)
-            
-            rows = db_connection.execute_query(candles_query, params, fetch_all=True)
-            
-            if not rows:
-                return {
-                    "status": "ok",
-                    "message": "No candles found in database",
-                    "data": {
-                        "pool_address": pool_address,
-                        "network": network,
-                        "pool_name": pool_result.get('pool_name'),
-                        "timeframe": "1m",
-                        "candles": [],
-                        "count": 0,
-                        "source": "database"
-                    }
-                }
-            
-            # Convert to dict format - optimized for performance
-            # Pre-allocate list size for better performance
-            candles = []
-            for row in rows:
-                # Handle timestamp conversion efficiently
-                ts = row['timestamp']
-                if hasattr(ts, 'timestamp'):
-                    ts_int = int(ts.timestamp())
-                elif isinstance(ts, (int, float)):
-                    ts_int = int(ts)
-                else:
-                    ts_int = int(ts) if ts else 0
-                
-                candles.append({
-                    "timestamp": ts_int,
-                    "open": float(row['open_price']),
-                    "high": float(row['high_price']),
-                    "low": float(row['low_price']),
-                    "close": float(row['close_price']),
-                    "volume": float(row['volume'])
-                })
-            
-            # Reverse to get chronological order (oldest first)
-            candles.reverse()
-            
+        
+        pool_id = pool_result['id']
+        
+        # Build optimized query with index-friendly ORDER BY
+        if hours_back:
+            candles_query = """
+                SELECT timestamp, open_price, high_price, low_price, close_price, volume
+                FROM ohlcv_candles
+                WHERE pool_id = %s AND timestamp >= NOW() - INTERVAL '%s hours'
+                ORDER BY timestamp DESC
+                LIMIT %s
+            """
+            params = (pool_id, hours_back, limit)
+        else:
+            # Optimized: Use LIMIT without WHERE clause when no time filter
+            candles_query = """
+                SELECT timestamp, open_price, high_price, low_price, close_price, volume
+                FROM ohlcv_candles
+                WHERE pool_id = %s
+                ORDER BY timestamp DESC
+                LIMIT %s
+            """
+            params = (pool_id, limit)
+        
+        rows = db_connection.execute_query(candles_query, params, fetch_all=True)
+        
+        if not rows:
             return {
                 "status": "ok",
                 "data": {
@@ -857,49 +813,49 @@ async def get_candles(
                     "pool_name": pool_result.get('pool_name'),
                     "pair": f"{pool_result.get('token_a_symbol', '?')}/{pool_result.get('token_b_symbol', '?')}",
                     "timeframe": "1m",
-                    "candles": candles,
-                    "count": len(candles),
+                    "candles": [],
+                    "count": 0,
                     "source": "database"
                 }
             }
-        else:
-            # Fetch from CoinGecko API
-            candles = await ohlcv_service.get_candles(
-                pool_address=pool_address,
-                network=network,
-                timeframe="1m",
-                limit=limit,
-                hours_back=hours_back
-            )
+        
+        # Convert to dict format - optimized for performance
+        candles = []
+        for row in rows:
+            # Handle timestamp conversion efficiently
+            ts = row['timestamp']
+            if hasattr(ts, 'timestamp'):
+                ts_int = int(ts.timestamp())
+            elif isinstance(ts, (int, float)):
+                ts_int = int(ts)
+            else:
+                ts_int = int(ts) if ts else 0
             
-            # Optionally store to database
-            if store and candles:
-                try:
-                    await ohlcv_service._store_candles_to_db(
-                        pool_address=pool_address,
-                        network=network,
-                        candles=candles
-                    )
-                    logger.info(f"Stored {len(candles)} candles for pool {pool_address[:20]}...")
-                except Exception as e:
-                    logger.warning(f"Failed to store candles: {e}")
-            
-            # Limit results
-            if limit and len(candles) > limit:
-                candles = candles[-limit:]
-            
-            return {
-                "status": "ok",
-                "data": {
-                    "pool_address": pool_address,
-                    "network": network,
-                    "timeframe": "1m",
-                    "candles": candles,
-                    "count": len(candles),
-                    "source": "coingecko_api",
-                    "stored_to_db": store
-                }
+            candles.append({
+                "timestamp": ts_int,
+                "open": float(row['open_price']),
+                "high": float(row['high_price']),
+                "low": float(row['low_price']),
+                "close": float(row['close_price']),
+                "volume": float(row['volume'])
+            })
+        
+        # Reverse to get chronological order (oldest first)
+        candles.reverse()
+        
+        return {
+            "status": "ok",
+            "data": {
+                "pool_address": pool_address,
+                "network": network,
+                "pool_name": pool_result.get('pool_name'),
+                "pair": f"{pool_result.get('token_a_symbol', '?')}/{pool_result.get('token_b_symbol', '?')}",
+                "timeframe": "1m",
+                "candles": candles,
+                "count": len(candles),
+                "source": "database"
             }
+        }
         
     except HTTPException:
         raise

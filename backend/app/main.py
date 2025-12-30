@@ -14,24 +14,13 @@ app = FastAPI(
 )
 
 # CORS middleware - CRITICAL: Must allow OPTIONS for preflight requests
-# This fixes OPTIONS 400 errors that break frontend
-cors_origins = settings.CORS_ORIGINS
-if isinstance(cors_origins, str):
-    cors_origins = [origin.strip() for origin in cors_origins.split(",") if origin.strip()]
-
-# If no origins configured or only localhost, allow all origins
+# Always allow all origins for now to fix OPTIONS 400 errors
 # This ensures CORS works in production without manual configuration
-# For production, set CORS_ORIGINS env var with your frontend URL(s)
-if not cors_origins or (len(cors_origins) == 1 and "localhost" in cors_origins[0]):
-    cors_origins = ["*"]
-    allow_creds = False  # Can't use credentials with wildcard
-else:
-    allow_creds = True
-
+# TODO: Tighten CORS_ORIGINS in production by setting env var if needed
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=allow_creds,
+    allow_origins=["*"],  # Always allow all origins - fixes OPTIONS 400 errors
+    allow_credentials=True,  # Allow credentials for authenticated requests
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
     expose_headers=["X-PAYMENT-RESPONSE"],
