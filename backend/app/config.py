@@ -76,6 +76,11 @@ class Settings(BaseSettings):
     # LangGraph Agent System
     USE_LANGGRAPH_AGENTS: bool = True  # Enable new LangGraph agent-based execution
     
+    # Runtime Mode
+    # RUN_MODE=api → HTTP server only (no schedulers, no background workers)
+    # RUN_MODE=worker → background schedulers only (no HTTP traffic)
+    RUN_MODE: str = "api"  # Default to API mode for safety
+    
     # CoinGecko API Limits
     COINGECKO_API_LIMIT_MONTHLY: int = 10000  # Monthly API call limit
     COINGECKO_API_LIMIT_PER_MINUTE: int = 30  # Rate limit: 30 requests per minute

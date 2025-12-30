@@ -138,7 +138,7 @@ async def root():
 @app.on_event("startup")
 async def startup_event():
     """Start background services on application startup."""
-    # Initialize CoinGecko database tables
+    # Initialize CoinGecko database tables (required for both API and worker modes)
     from app.utils.db_init import init_coingecko_tables, init_strategy_tables, init_users_table, reset_sequence
     if init_coingecko_tables():
         logger.info("CoinGecko database tables initialized")
@@ -159,56 +159,68 @@ async def startup_event():
     else:
         logger.error("Failed to initialize strategy builder tables")
     
-    # Start OHLCV scheduler if enabled
-    if settings.OHLCV_SCHEDULER_ENABLED:
-        from app.services.ohlcv_scheduler import ohlcv_scheduler
-        ohlcv_scheduler.start()
-        logger.info("OHLCV scheduler started - fetching and storing data every minute")
+    # Only start schedulers in worker mode
+    if settings.RUN_MODE == "worker":
+        logger.info(f"RUN_MODE=worker detected - starting background schedulers")
+        
+        # Start OHLCV scheduler if enabled
+        if settings.OHLCV_SCHEDULER_ENABLED:
+            from app.services.ohlcv_scheduler import ohlcv_scheduler
+            ohlcv_scheduler.start()
+            logger.info("OHLCV scheduler started - fetching and storing data every minute")
+        else:
+            logger.info("OHLCV scheduler disabled - data will be fetched on-demand only")
+        
+        # Start sentiment scheduler if enabled
+        if settings.SENTIMENT_SCHEDULER_ENABLED:
+            from app.services.sentiment_scheduler import sentiment_scheduler
+            sentiment_scheduler.start()
+            logger.info("Sentiment scheduler started - will analyze sentiment every 24 hours")
+        else:
+            logger.info("Sentiment scheduler disabled - sentiment will be fetched on-demand only")
+        
+        # Start autonomous trading scheduler if enabled
+        if settings.AUTONOMOUS_TRADING_ENABLED:
+            from app.services.autonomous_scheduler import autonomous_scheduler
+            autonomous_scheduler.start()
+            logger.info("Autonomous trading scheduler started - checking markets every 5 minutes")
+        else:
+            logger.info("Autonomous trading scheduler disabled")
+        
+        # Start strategy scheduler (always enabled in worker mode)
+        from app.services.strategy_scheduler import strategy_scheduler
+        strategy_scheduler.start()
+        logger.info("Strategy scheduler started - checking active strategies every minute")
     else:
-        logger.info("OHLCV scheduler disabled - data will be fetched on-demand only")
-    
-    # Start sentiment scheduler if enabled
-    if settings.SENTIMENT_SCHEDULER_ENABLED:
-        from app.services.sentiment_scheduler import sentiment_scheduler
-        sentiment_scheduler.start()
-        logger.info("Sentiment scheduler started - will analyze sentiment every 24 hours")
-    else:
-        logger.info("Sentiment scheduler disabled - sentiment will be fetched on-demand only")
-    
-    # Start autonomous trading scheduler if enabled
-    if settings.AUTONOMOUS_TRADING_ENABLED:
-        from app.services.autonomous_scheduler import autonomous_scheduler
-        autonomous_scheduler.start()
-        logger.info("Autonomous trading scheduler started - checking markets every 5 minutes")
-    else:
-        logger.info("Autonomous trading scheduler disabled")
-    
-    # Start strategy scheduler (always enabled)
-    from app.services.strategy_scheduler import strategy_scheduler
-    strategy_scheduler.start()
-    logger.info("Strategy scheduler started - checking active strategies every minute")
+        # API mode - no schedulers, only HTTP routes
+        logger.info(f"RUN_MODE=api detected - running HTTP server only (no background schedulers)")
+        logger.info("All schedulers disabled in API mode - use RUN_MODE=worker to enable background jobs")
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on application shutdown."""
-    if settings.OHLCV_SCHEDULER_ENABLED:
-        from app.services.ohlcv_scheduler import ohlcv_scheduler
-        ohlcv_scheduler.stop()
-        logger.info("OHLCV scheduler stopped")
-    
-    if settings.SENTIMENT_SCHEDULER_ENABLED:
-        from app.services.sentiment_scheduler import sentiment_scheduler
-        sentiment_scheduler.stop()
-        logger.info("Sentiment scheduler stopped")
-    
-    if settings.AUTONOMOUS_TRADING_ENABLED:
-        from app.services.autonomous_scheduler import autonomous_scheduler
-        autonomous_scheduler.stop()
-        logger.info("Autonomous trading scheduler stopped")
-    
-    # Stop strategy scheduler
-    from app.services.strategy_scheduler import strategy_scheduler
-    strategy_scheduler.stop()
-    logger.info("Strategy scheduler stopped")
+    # Only stop schedulers if they were started (worker mode)
+    if settings.RUN_MODE == "worker":
+        if settings.OHLCV_SCHEDULER_ENABLED:
+            from app.services.ohlcv_scheduler import ohlcv_scheduler
+            ohlcv_scheduler.stop()
+            logger.info("OHLCV scheduler stopped")
+        
+        if settings.SENTIMENT_SCHEDULER_ENABLED:
+            from app.services.sentiment_scheduler import sentiment_scheduler
+            sentiment_scheduler.stop()
+            logger.info("Sentiment scheduler stopped")
+        
+        if settings.AUTONOMOUS_TRADING_ENABLED:
+            from app.services.autonomous_scheduler import autonomous_scheduler
+            autonomous_scheduler.stop()
+            logger.info("Autonomous trading scheduler stopped")
+        
+        # Stop strategy scheduler
+        from app.services.strategy_scheduler import strategy_scheduler
+        strategy_scheduler.stop()
+        logger.info("Strategy scheduler stopped")
+    else:
+        logger.info("API mode shutdown - no schedulers to stop")
 
