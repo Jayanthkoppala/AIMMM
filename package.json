@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "AIMMM - AI Trading Agent Hackathon App on Movement Network",
+  "packageManager": "pnpm@10.26.0",
   "scripts": {
     "dev": "pnpm --parallel --filter './frontend' --filter './backend' dev",
     "dev:frontend": "pnpm --filter frontend dev",
