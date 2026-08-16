@@ -1,103 +1,118 @@
+<div align="center">
+
 # AIMMM
 
-A production-ready hackathon application featuring AI trading agents on Movement Network. The system integrates Switchboard oracles, Mosaic DEX, x402 payments, and OpenRouter LLM inference.
+**Seven agents decide the trade. The user pays for the run over HTTP 402.**
 
-## Architecture
+[![Live app](https://img.shields.io/badge/live-ai--mmm.vercel.app-10b981?style=for-the-badge)](https://ai-mmm.vercel.app)
+[![x402](https://img.shields.io/badge/x402-agent%20payments-8B5CF6?style=for-the-badge)](https://x402.org)
+[![LangGraph](https://img.shields.io/badge/LangGraph-state%20machine-1C3C3C?style=for-the-badge)](https://langchain-ai.github.io/langgraph/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![Next.js](https://img.shields.io/badge/Next.js-000000?style=for-the-badge&logo=nextdotjs)](https://nextjs.org)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE)
 
-- **Smart Contracts**: Agent execution contract integrating with Mosaic DEX aggregator
-- **Backend (FastAPI)**: Agent orchestration, LLM reasoning, oracle data fetching, x402 payment handling
-- **Frontend (Next.js)**: User interface for agent execution, wallet connection, payment flow, trade visualization
-- **Database (Supabase)**: User sessions, agent execution history, payment records
+</div>
 
-## Quick Start
+---
 
-### Prerequisites
+## What this is
 
-- Node.js 18+
-- pnpm 8+
-- Python 3.10+
-- Movement CLI
-- Supabase account
+An autonomous trading system where the reasoning is done by a graph of agents and the
+service is metered by the payment protocol rather than by an account system.
 
-### Installation
+Two things make it worth reading. The first is that the agents are wired as an explicit
+state machine, not a prompt chain, so you can see exactly which node made which call and
+where the flow branched. The second is that access is gated by **x402** — the client is
+handed an HTTP 402, presents a signed payment header, and the server verifies it with a
+facilitator before doing any work. No API keys, no subscriptions, no accounts.
 
-1. **Install root dependencies:**
-   ```bash
-   pnpm install
-   ```
+## The agent graph
 
-2. **Set up contracts:**
-   ```bash
-   cd contracts
-   # Configure Move.toml with dependencies
-   movement move compile
-   ```
+Built on a LangGraph `StateGraph` over a shared `TradingState`. Seven nodes:
 
-3. **Configure backend:**
-   ```bash
-   cd backend
-   cp .env.example .env
-   # Edit .env with your credentials
-   pip install -r requirements.txt
-   ```
+```
+MARKET_DATA ──▶ PORTFOLIO ──▶ MONITORING ──▶ RISK
+                                              │
+                                     ANALYSIS ─┴──▶ DECISION ──▶ RISK ──▶ EXECUTION ──▶ END
+```
 
-4. **Configure frontend:**
-   ```bash
-   cd frontend
-   cp .env.local.example .env.local
-   # Edit .env.local with your credentials
-   pnpm install
-   ```
+| Node | Responsibility |
+|---|---|
+| `market_data_agent` | Pulls prices and market state from oracles |
+| `portfolio_agent` | Reads current holdings and exposure |
+| `monitoring_agent` | Watches open positions and running conditions |
+| `risk_agent` | Applies limits. Sits between the decision and the execution, deliberately |
+| `analysis_agent` | Interprets the market picture |
+| `decision_agent` | Chooses the action |
+| `execution_agent` | Places it, then the graph terminates |
 
-### Development
+Routing between several of these is conditional, so a run can end early rather than
+forcing every step. `metrics.py` records what each node did.
 
-Run all services concurrently:
+## How the payment works
+
+`backend/app/services/x402.py` implements the resource-server half of x402:
+
+1. The client sends an `X-PAYMENT` header, base64-encoded JSON.
+2. The server decodes it, pulls out the invoice ID, and posts the payment plus the
+   declared requirements to the configured facilitator's `/verify` endpoint.
+3. The facilitator answers. On success the server gets back a transaction hash, ties it to
+   the invoice, and only then runs the graph.
+
+The effect is that a single agent run is a priced unit of work, settled on-chain, with no
+relationship between the caller and the service beyond the payment itself. That is the
+property x402 exists to provide, and it fits an agent that is expensive to run and has no
+reason to know who you are.
+
+## Stack
+
+| | |
+|---|---|
+| Agents | LangGraph `StateGraph`, seven nodes over a shared state object |
+| Inference | OpenRouter |
+| Payments | x402, verified against a facilitator |
+| Market data | Switchboard oracles |
+| Execution venue | Mosaic DEX aggregator |
+| Network | Movement |
+| Backend | FastAPI, Python 3.11 |
+| Frontend | Next.js, TypeScript, pnpm workspace |
+| Storage | Supabase |
+| Deploy | Vercel (frontend), Railway / Render / Fly (backend), Docker |
+
+## Running it
+
 ```bash
-pnpm dev
+pnpm install
+
+cd backend
+cp .env.example .env          # facilitator URL, OpenRouter key, Supabase creds
+pip install -r requirements.txt
+
+cd ../frontend
+cp .env.local.example .env.local
+
+pnpm dev                      # both services
+pnpm dev:backend              # :8000
+pnpm dev:frontend             # :3000
 ```
 
-Or run individually:
-```bash
-pnpm dev:frontend  # Frontend on :3000
-pnpm dev:backend   # Backend on :8000
-```
-
-### Project Structure
+## Layout
 
 ```
-aimmm/
-├── contracts/          # Move smart contracts
-├── backend/           # FastAPI backend
-└── frontend/          # Next.js frontend
+backend/
+  app/
+    agents/      the seven nodes, the graph, shared state, metrics
+    services/    x402 verification, oracle reads, Mosaic routing
+    routers/     HTTP surface, including the payment-gated endpoints
+    models/      payment and execution records
+frontend/
+  app/hooks/     use-x402-payment.ts — the client half of the 402 flow
 ```
 
-## Environment Variables
+## Status
 
-See individual package READMEs for detailed environment variable documentation:
-- `backend/.env.example`
-- `frontend/.env.local.example`
+Built for a hackathon and deployed. The agent graph, the x402 verification path and the
+execution route all work end to end against live services. It has not been audited, and
+nothing here is financial advice or a recommendation to trade.
 
-## Deployment
-
-### 🚀 Free Deployment Options
-
-Deploy your entire stack for **free** using these services:
-
-- **Frontend**: [Vercel](https://vercel.com) (free tier, perfect for Next.js)
-- **Backend**: [Railway](https://railway.app) ($5 free credit/month) or [Render](https://render.com) (free tier)
-- **Database**: [Supabase](https://supabase.com) (free tier, already configured)
-
-**Quick Start:**
-- See [DEPLOY_QUICKSTART.md](./DEPLOY_QUICKSTART.md) for 10-minute deployment guide
-- See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed instructions
-
-**Deployment Files:**
-- `backend/Dockerfile` - Docker configuration
-- `backend/railway.json` - Railway configuration
-- `backend/render.yaml` - Render configuration
-- `backend/fly.toml` - Fly.io configuration
-
-## License
-
-MIT
-
+MIT licensed.
