@@ -11,6 +11,12 @@
 [![Next.js](https://img.shields.io/badge/Next.js-000000?style=for-the-badge&logo=nextdotjs)](https://nextjs.org)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE)
 
+<a href="https://ai-mmm.vercel.app">
+  <img src="docs/demo.png" alt="AIMMM: the agent console, boot sequence and live module table" width="820">
+</a>
+
+<sub><a href="https://ai-mmm.vercel.app">Open the live app</a></sub>
+
 </div>
 
 ---
